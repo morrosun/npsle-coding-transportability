@@ -1,0 +1,29 @@
+{
+  "title": "NPSLE coding transportability: analysis code for transportability and structural limits of administrative neuropsychiatric phenotyping in a three-database ICU evaluation",
+  "upload_type": "software",
+  "publication_date": "2026-09-18",
+  "description": "<p>Analysis code (SQL database screen + Python pipeline) for the study 'Transportability and structural limits of administrative neuropsychiatric phenotyping in critically ill patients with systemic lupus erythematosus: a three-database evaluation'.</p><p>The pipeline reconstructs aligned cohorts of critically ill patients with systemic lupus erythematosus from three PhysioNet-credentialed ICU databases (MIMIC-IV, eICU-CRD, NWICU), assigns an investigator-proposed diagnostic-confidence tier to every recorded neuropsychiatric code, and computes: (i) prevalence and tier composition per database; (ii) the sepsis/neuropsychiatric co-occurrence association with a cross-database random-effects pooled estimate; (iii) a three-layer quantitative bias framework - attenuation under imperfect positive predictive value, the definitional-overlap magnitude that would null the association, and E-values - together with a test distinguishing effect homogeneity from measurement equivalence; and (iv) internal versus external discrimination and calibration of routine-data prediction models.</p><p>The repository contains code only. No patient-level data are published (PhysioNet Data Use Agreement).</p>",
+  "creators": [
+    {"name": "Wang, Kai", "orcid": "0000-0002-0511-8038", "affiliation": "Department of Rheumatology and Immunology, The Affiliated Huaian No.1 People's Hospital of Nanjing Medical University, Huaian, China"},
+    {"name": "Liu, Ying", "affiliation": "Department of Rheumatology and Immunology, The First People's Hospital of Yancheng, The Fourth Affiliated Hospital of Nantong University, Yancheng, China"},
+    {"name": "Li, Siyin", "affiliation": "Department of Rheumatology and Immunology, Mianyang Central Hospital, School of Medicine, University of Electronic Science and Technology of China, Mianyang, China"},
+    {"name": "Gao, Yan", "affiliation": "Department of Rheumatology and Immunology, The First Affiliated Hospital of Zhejiang Chinese Medical University, Hangzhou, China"},
+    {"name": "Li, Ju", "affiliation": "Department of Rheumatology and Immunology, The Affiliated Huaian No.1 People's Hospital of Nanjing Medical University, Huaian, China"}
+  ],
+  "access_right": "open",
+  "license": "mit",
+  "keywords": [
+    "systemic lupus erythematosus",
+    "neuropsychiatric lupus",
+    "computable phenotype",
+    "administrative coding",
+    "transportability",
+    "quantitative bias analysis",
+    "E-value",
+    "critical care",
+    "MIMIC-IV",
+    "eICU",
+    "reproducible research"
+  ],
+  "version": "1.0.0"
+}

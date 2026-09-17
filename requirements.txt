@@ -1,0 +1,11 @@
+# NPSLE coding-transportability analysis pipeline
+# Tested with Python 3.13; versions are the ones used for the submitted analysis.
+pandas>=2.2
+numpy>=1.26
+scipy>=1.13
+statsmodels>=0.14
+scikit-learn>=1.5
+xgboost>=2.1
+matplotlib>=3.9
+Pillow>=10.4
+psycopg2-binary>=2.9
