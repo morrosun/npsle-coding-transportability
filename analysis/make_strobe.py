@@ -2,14 +2,20 @@
 
 925 total SLE-related ICU stays (MIMIC-IV 645, eICU-CRD 230, NWICU 50)
  -> exclude repeat ICU stays within the same patient (342)
- -> 583 first ICU stay cohort (MIMIC-IV 354, eICU-CRD 186, NWICU 43)
+ -> 583 one stay per patient cohort (MIMIC-IV 354, eICU-CRD 186, NWICU 43)
 """
+import os
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.patches import FancyBboxPatch, FancyArrowPatch
 
-OUT = r"D:\BaiduSyncdisk\MIMIC\NPSLE1\fig\strobe_flow.png"
+# Portable output path: fig/ next to this script (no absolute, machine-specific
+# path).  Override with the STROBE_OUT environment variable if needed.
+_HERE = os.path.dirname(os.path.abspath(__file__))
+OUT = os.environ.get(
+    "STROBE_OUT", os.path.join(_HERE, os.pardir, "fig", "strobe_flow.png"))
+os.makedirs(os.path.dirname(os.path.abspath(OUT)), exist_ok=True)
 
 fig, ax = plt.subplots(figsize=(8.0, 6.4), dpi=300)
 ax.set_xlim(0, 100)
@@ -38,9 +44,9 @@ ax.text(50, 52, "Exclude repeat ICU stays within the same patient (n = 342)",
         ha="center", va="center", fontsize=9.5, color="#7a3b00",
         fontstyle="italic", fontfamily="DejaVu Sans")
 
-# Bottom box: first-stay cohort
+# Bottom box: one stay per patient
 box(14, 18, 72, 24,
-    ["First ICU stay cohort (primary analysis)",
+    ["One stay per patient (primary analysis)",
      "MIMIC-IV 354   ·   eICU-CRD 186   ·   NWICU 43",
      "Total = 583 unique patients"])
 

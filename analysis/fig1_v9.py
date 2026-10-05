@@ -3,7 +3,7 @@
 (a) tier_composition.png: mutually-exclusive stacked composition as % of all
     ICU stays (Tier A / B / C-only; 'unassigned' labelled separately).
 (b) tierC_reprod.png:  C-only proportion of CORE events under both cohort
-    bases (first-stay vs all-stays) with Wilson 95% CI; unassigned n shown.
+    bases (one stay per patient vs all stays) with Wilson 95% CI; unassigned n shown.
 Then compose fig1_tier_dual.png at 300 dpi.
 """
 import os, json, pathlib
@@ -110,7 +110,7 @@ for db in ["mimiciv", "eicu"]:
     d_all = data[db]
     fids = set(pd.Series(FIRST[FKEY[db]]).astype(str))
     d_first = d_all[d_all["stay_id"].astype(str).isin(fids)]
-    for tag, d in [("First stay", d_first), ("All stays", d_all)]:
+    for tag, d in [("One stay per patient", d_first), ("All stays", d_all)]:
         core = pd.to_numeric(d["npsle_core"], errors="coerce").fillna(0) == 1
         hi = pd.to_numeric(d["npsle_hi"], errors="coerce").fillna(0) == 1
         tc = pd.to_numeric(d["tier_c"], errors="coerce").fillna(0) == 1
@@ -125,7 +125,7 @@ S = pd.DataFrame(sub)
 fig, ax = plt.subplots(figsize=(7, 8))
 xs = np.arange(2)
 w = 0.32
-for j, tag in enumerate(["First stay", "All stays"]):
+for j, tag in enumerate(["One stay per patient", "All stays"]):
     part = S[S["tag"] == tag]
     pos = xs + (j - 0.5) * w
     for k, (_, r) in enumerate(part.iterrows()):
@@ -154,7 +154,8 @@ print("wrote tierC_reprod.png (mutually-exclusive C-only, both bases)")
 
 # ================================================= compose fig1_tier_dual.png
 from PIL import Image, ImageDraw, ImageFont
-FONT = "C:/Windows/Fonts/arial.ttf"
+# Portable font: system Arial when present, otherwise Pillow's default.
+FONT = os.path.join(os.environ.get("WINDIR", "C:/Windows"), "Fonts", "arial.ttf")
 def font(size):
     try:
         return ImageFont.truetype(FONT, size)

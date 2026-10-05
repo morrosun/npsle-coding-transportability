@@ -12,19 +12,29 @@ included; all cohorts are derived from PhysioNet-credentialed databases
 Researchers with PhysioNet credentials can reconstruct the cohorts by running
 the SQL check and extraction scripts against their own local database copies.
 
-> **Version:** `1.1.1` — synchronized with the submitted manuscript
-> (review-11 snapshot, 2026-10-05). `1.1.0` shipped the review-10 pass; this
-> release corrects three things in the code itself, found on the eleventh
-> external review: (i) the eICU-CRD one-ICU-stay-per-patient selection rule in
-> `make_first_stays.py` sorted by `hospitaladmitoffset` ascending, which selects
-> the *last* ICU stay of the *latest* admission because eICU offsets are
-> measured from each admission; (ii) `extract_tier.py` intersected the legacy
-> arm with the audited core flag instead of the legacy arm's own core universe;
-> and (iii) `v7_identification_models.py` carried a dead `try/except` around
+> **Version:** `1.1.2` — synchronized with the submitted manuscript
+> (review-11 snapshot, 2026-10-05). `1.1.1` corrected three things in the code
+> itself, found on the eleventh external review: (i) the eICU-CRD
+> one-ICU-stay-per-patient selection rule in `make_first_stays.py` sorted by
+> `hospitaladmitoffset` ascending, which selects the *last* ICU stay of the
+> *latest* admission because eICU offsets are measured from each admission;
+> (ii) `extract_tier.py` intersected the legacy arm with the audited core flag
+> instead of the legacy arm's own core universe; and (iii) 
+> `v7_identification_models.py` carried a dead `try/except` around
 > `RepeatedStratifiedGroupKFold`, a class that does not exist in scikit-learn.
-> The previous release (`1.0.0`, 2026-09-18) shipped an earlier, partially
-> inconsistent analysis pass. Two superseded scripts are retained under
-> `legacy_pre_review10/` for transparency.
+> This release (`1.1.2`) fixes two further defects found while checking the
+> *outputs* rather than the text: `fig_en.py` still reproduced the ROC,
+> calibration and decision-curve panels from the retired `part2_model.py`
+> (stay-level `RepeatedStratifiedKFold`), so the ROC legend read AUC 0.578 /
+> 0.689 instead of the patient-grouped 0.514 / 0.686 reported in the
+> manuscript; and the composite figures had not been rebuilt after the `1.1.1`
+> reruns, so Figure 2 still carried pre-review estimates. It also removes the
+> last machine-specific paths (`make_strobe.py` output file, the Arial font
+> path in `create_fig_composites.py` / `fig1_v9.py`) and renames the remaining
+> "first stay" labels to "one stay per patient".
+> Earlier releases: `1.1.0` (2026-10-05) shipped the review-10 pass; `1.0.0`
+> (2026-09-18) an earlier, partially inconsistent analysis pass. Two superseded
+> scripts are retained under `legacy_pre_review10/` for transparency.
 
 ## What the study does
 
@@ -146,9 +156,17 @@ are written to `out/` (created on demand).
 8. **Table assembly** — `python analysis/v8_tables.py` and
    `python analysis/v9_tables.py` build the supplementary tables; `v6_tier_multinomial.py`
    builds the tier coefficient ratio.
-9. **Figures** — `analysis/fig_en.py`, `analysis/fig_revision.py`, `analysis/fig1_v9.py`,
-   `analysis/fig_ladder.py`, `analysis/make_strobe.py` (participant flow), then
-   `analysis/create_fig_composites.py` to assemble the multi-panel figures.
+9. **Figures** — run the panel producers first, in this order, because several of
+   them write the same file name and the last writer wins:
+   `python analysis/fig_en.py` (English panels, including the ROC / calibration /
+   decision curves, which use the patient-grouped cross-validation of
+   `v7_identification_models.py`), then `python analysis/fig1_v9.py` (Figure 1
+   layout), `python analysis/fig_ladder.py` (attribution ladder) and
+   `python analysis/make_strobe.py` (participant flow); finish with
+   `python analysis/create_fig_composites.py`, which assembles the multi-panel
+   figures and must be re-run after **any** panel is regenerated.
+   `analysis/fig_revision.py` and the retired `legacy_pre_review10/part2_model.py`
+   are kept for provenance only and are not part of this chain.
 10. **Provenance export** — `python analysis/export_final_numbers.py` consolidates
     every result file into `out/final_numbers.json`.
 

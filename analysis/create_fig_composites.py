@@ -6,8 +6,10 @@ S1 = strobe_flow (unchanged)."""
 import os
 from PIL import Image, ImageDraw, ImageFont
 
-FIG = "fig"
-FONT = "C:/Windows/Fonts/arial.ttf"
+FIG = os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir, "fig")
+# Portable font: use the system Arial when present, otherwise let Pillow pick a
+# default (font() already falls back gracefully).
+FONT = os.path.join(os.environ.get("WINDIR", "C:/Windows"), "Fonts", "arial.ttf")
 
 def font(size):
     try:

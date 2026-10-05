@@ -14,6 +14,13 @@ Reproduces the IDENTICAL computations of
 
 Only the *text labels* and the *font* differ; every statistic, OR, CI, AUC and
 point estimate is computed by the same code path with the same seeds.
+
+Review-11: the internal ROC / calibration / decision curves are no longer
+reproduced from the superseded scripts/part2_model.py (stay-level
+RepeatedStratifiedKFold). They now mirror scripts/v7_identification_models.py
+(five repeats of five-fold StratifiedGroupKFold, grouped by patient, seed
+RNG + repeat), so the AUCs printed in the ROC legend agree with Table S9 and
+with the main text.
 fig/strobe_flow.png is produced by scripts/make_strobe.py and is left untouched.
 
 No CSV in out/ is written or modified — they are read only.
@@ -35,7 +42,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.ticker import FixedLocator, FuncFormatter, NullLocator
 
-from sklearn.model_selection import RepeatedStratifiedKFold
+from sklearn.model_selection import StratifiedGroupKFold
 from sklearn.metrics import roc_auc_score, roc_curve
 import xgboost as xgb
 
@@ -375,7 +382,7 @@ if mtf:
     items.append(("Pooled (random effects)", mtf["OR"], mtf["lo"], mtf["hi"], True))
 forest(items,
        "Sepsis comorbidity association with recorded neuropsychiatric events\n"
-       "(first ICU stay cohort)",
+       "(one stay per patient)",
        "Adjusted OR", FIG / "forest_sepsis_first.png",
        xlim=(0.5, 6), ticks=(0.5, 1, 2, 4))
 if mtf:
@@ -418,7 +425,7 @@ for tag in ["Tier C", "Tier A+B"]:
         m = tier_meta[tag]
         ti.append((f"{tag} \u00b7 Pooled", m["OR"], m["lo"], m["hi"], True))
 forest(ti, "Sepsis comorbidity association by diagnostic-confidence tier\n"
-           "(first ICU stay cohort)",
+           "(one stay per patient)",
        "Adjusted OR", FIG / "forest_tier_first.png",
        xlim=(0.1, 12), ticks=(0.25, 0.5, 1, 2, 4, 8))
 for tag, m in tier_meta.items():
@@ -455,7 +462,7 @@ for nm, _ in OUTCOMES:
         m = meta_A[nm]
         oi.append((f"{nm} \u00b7 Pooled", m["OR"], m["lo"], m["hi"], True))
 forest(oi, "Association of recorded neuropsychiatric events with clinical outcomes\n"
-           "(first ICU stay cohort, outcome model A2)",
+           "(one stay per patient, outcome model A2)",
        "Adjusted OR", FIG / "forest_outcomes_first.png",
        xlim=(0.08, 20), ticks=(0.25, 0.5, 1, 2, 4, 8))
 
@@ -544,11 +551,26 @@ cohort = {db: pd.read_csv(OUT / f"cohort_{db}.csv")
 
 
 def internal_cv(df, feats, n_splits=5, n_repeats=5, target="npsle_core"):
+    """Patient-grouped internal cross-validation.
+
+    Mirrors scripts/v7_identification_models.py::internal_cv_grouped exactly:
+    scikit-learn has no RepeatedStratifiedGroupKFold class, so the repetition is
+    written out explicitly as n_repeats independent StratifiedGroupKFold splits,
+    grouped by subject_id (patient), each repeat using random_state RNG + r.
+    The row order is the same as npsle_io.load (sorted by subject_id, stay_id,
+    mergesort), so the folds - and therefore the AUCs - reproduce Table S9.
+    """
     y = pd.to_numeric(df[target], errors="coerce").fillna(0).values.astype(int)
+    grp = df["subject_id"].astype(str).values
     oof = np.zeros(len(df))
     cnt = np.zeros(len(df))
-    cv = RepeatedStratifiedKFold(n_splits=n_splits, n_repeats=n_repeats, random_state=RNG)
-    for tr, te in cv.split(np.zeros(len(y)), y):
+    X0 = np.zeros(len(df))
+    splits = []
+    for r in range(n_repeats):
+        c2 = StratifiedGroupKFold(n_splits=n_splits, shuffle=True,
+                                  random_state=RNG + r)
+        splits += list(c2.split(X0, y, groups=grp))
+    for tr, te in splits:
         pp = Prep(feats, use_rcs=False).fit(df.iloc[tr])
         Xtr, Xte = pp.transform_raw(df.iloc[tr]), pp.transform_raw(df.iloc[te])
         pr = fit_xgb_model(Xtr, y[tr]).predict_proba(Xte)[:, 1]
