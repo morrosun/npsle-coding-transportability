@@ -1,4 +1,3 @@
-import os
 # -*- coding: utf-8 -*-
 """
 v7 — verify the two remaining factual questions before any wording is changed.
@@ -40,7 +39,7 @@ A = W.append
 def load(db):
     c = npsle_io.load(db)
     t = pd.read_csv(OUT / f"tier_{db}.csv")
-    d = c.merge(t, on="stay_id", how="left")
+    d = c.merge(t, on="stay_id", how="left", suffixes=("", "_tier"))
     d = d[d["stay_id"].isin(set(FIRST[FKEY[db]]))].copy()
     d["_core"] = num(d["npsle_core"]) == 1
     d["_hi"] = num(d["npsle_hi"]) == 1

@@ -1,4 +1,3 @@
-import os
 # -*- coding: utf-8 -*-
 """Review-6, decision B: emit Table S31, the complete specification of the
 audited phenotyping algorithm, straight from the rule constants that the two
@@ -12,6 +11,7 @@ extract_cohort.py, the frequencies come from out/t11_tier_terms.csv and from the
 legacy inventory already published as Table S27, and the counts come from
 out/_counts_before_after.txt and out/tier_eicu*.csv.
 """
+import os
 import io
 import json
 import pathlib
@@ -61,14 +61,30 @@ for tier, term, n in legacy:
 excl_c = sum(n for t, _, n in excluded if t == "C")
 
 # ------------------------------------------------- 3. counts
-cb = io.open(OUT / "_counts_before_after.txt", encoding="utf-8").read()
-m = re.search(r"eicu  ALL STAYS(.*?)={10,}", cb, re.S)
-assert m, "eICU all-stays block not found"
-eb = m.group(1)
-m = re.search(r"eicu  FIRST STAY(.*?)={10,}", cb, re.S)
-assert m, "eICU first-stay block not found"
-ef = m.group(1)
-assert "core            85 ->     83" in eb and "core            65 ->     64" in ef
+# review-11: the exclusion-list ON/OFF effect is read from the stay-level audit
+# recomputed over the shipped cohort (out/_r11_exclusion_audit.json), so the
+# numbers follow the cohort rule instead of a frozen snapshot.
+# (out/_counts_before_after.txt predates the review-11 one-stay-per-patient
+# rule and its first-stay block is therefore superseded.)
+_e11 = json.loads((OUT / "_r11_exclusion_audit.json").read_text(encoding="utf-8"))
+EA, EF = _e11["all_stays"], _e11["first_stays"]
+assert (EA["core_off"], EA["core_on"]) == (85, 83)
+assert (EA["tb_off"], EA["tb_on"]) == (33, 31)
+assert (EA["ctrl_off"], EA["ctrl_on"]) == (145, 147)
+assert (EF["core_off"], EF["core_on"]) == (64, 62)
+assert (EF["tb_off"], EF["tb_on"]) == (23, 21)
+assert (EF["ctrl_off"], EF["ctrl_on"]) == (122, 124)
+
+# audited-versus-legacy core counts on the shipped one-stay-per-patient basis
+_first11 = {k: set(int(x) for x in v) for k, v in
+            json.loads((OUT / "_first_stays.json").read_text(encoding="utf-8")).items()}
+_lg11 = pd.read_csv(OUT / "tier_eicu_legacy.csv")
+_au11 = pd.read_csv(OUT / "tier_eicu.csv")
+LEG_EICU_FIRST = int(_lg11.loc[_lg11.stay_id.isin(_first11["eicu_first"]),
+                               "npsle_core"].sum())
+AUD_EICU_FIRST = int(_au11.loc[_au11.stay_id.isin(_first11["eicu_first"]),
+                               "npsle_core"].sum())
+assert (LEG_EICU_FIRST, AUD_EICU_FIRST) == (76, 62), (LEG_EICU_FIRST, AUD_EICU_FIRST)
 
 tp = pd.read_csv(OUT / "tier_eicu.csv")
 assert int(tp.npsle_core.sum()) == 83 and int(tp.tier_unassigned.sum()) == 2
@@ -354,7 +370,7 @@ row("Broad definition <code>npsle_broad</code> (sensitivity analysis)",
     code(EC.NP_ICD["dom_pns"][1]) + " in the ICD databases; " +
     code(EC.NP_EICU_RESTRICTED["dom_cvd"]) + " and " +
     code(EC.NP_EICU_RESTRICTED["dom_pns"]) + " in eICU-CRD. Metabolic "
-    "encephalopathy is <i>not</i> part of this definition: it is carried by "
+    "encephalopathy is <i>not</i> added as a separate domain: it is carried by "
     "<code>npsle_sens</code> below. All-stays counts are %d (MIMIC-IV), %d "
     "(eICU-CRD) and %d (NWICU) stays, the &ldquo;broad events&rdquo; column of "
     "Table S2" % (_cnt("mimiciv", "npsle_broad"), _cnt("eicu", "npsle_broad"),
@@ -384,8 +400,8 @@ for lab, txt in [
      "100 core events under the legacy whole-path rules against 83 under the "
      "audited rules: 17 stays carry a legacy core event and no audited one, and "
      "no stay is added (Table S29)"),
-    ("Audited versus legacy, eICU-CRD (first stays)",
-     "77 against 64"),
+    ("Audited versus legacy, eICU-CRD (one stay per patient)",
+     "%d against %d" % (LEG_EICU_FIRST, AUD_EICU_FIRST)),
     ("MIMIC-IV and NWICU", "identical under the two rule sets, because the "
      "audited rules differ from the legacy ones only in the path handling that "
      "applies to the free-text dictionary"),
@@ -393,10 +409,13 @@ for lab, txt in [
      "the exclusion list was first tested against the <code>leaf</code> "
      "component, where its leading separator made it unreachable, so it had no "
      "effect; testing it against the whole string, which is what the list "
-     "states, moved the eICU-CRD all-stays core count from 85 to 83 and the "
-     "Tier B count from 33 to 31, and the first-stay core count from 65 to 64 "
-     "and Tier B from 23 to 22, with the control group moving from 145 to 147 "
-     "and from 121 to 122"),
+     "states, moved the eICU-CRD all-stays core count from %d to %d and the "
+     "Tier B count from %d to %d, and the one-stay-per-patient core count from "
+     "%d to %d and Tier B from %d to %d, with the control group moving from "
+     "%d to %d and from %d to %d"
+     % (EA["core_off"], EA["core_on"], EA["tb_off"], EA["tb_on"],
+        EF["core_off"], EF["core_on"], EF["tb_off"], EF["tb_on"],
+        EA["ctrl_off"], EA["ctrl_on"], EF["ctrl_off"], EF["ctrl_on"])),
     ("Which stays moved, and why (stay-level audit)",
      ("the two states were recomputed stay by stay from the raw eICU-CRD "
       "diagnosis strings, once with the exclusion list applied and once with "
@@ -422,10 +441,11 @@ for lab, txt in [
      "in these data the change is one-way at the level of core membership. "
      "Seventeen stays with a legacy core event carry no recorded core event "
      "under the audited rules and none is added; the later revision of the "
-     "exclusion test moved the eICU-CRD counts from 85 to 83 and from 65 to 64 "
+     "exclusion test moved the eICU-CRD counts from %d to %d and from %d to %d "
      "with no stay added. The exclusion list removes evidence rather than "
      "reassigning it, so a stay can lose a domain or a tier but cannot gain "
-     "one, and the tier assignment of every retained event was unchanged"),
+     "one, and the tier assignment of every retained event was unchanged"
+     % (EA["core_off"], EA["core_on"], EF["core_off"], EF["core_on"])),
 ]:
     H.append('<tr><td style="text-align:left">%s</td><td style="text-align:left">%s</td></tr>'
              % (lab, txt))

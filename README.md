@@ -12,11 +12,19 @@ included; all cohorts are derived from PhysioNet-credentialed databases
 Researchers with PhysioNet credentials can reconstruct the cohorts by running
 the SQL check and extraction scripts against their own local database copies.
 
-> **Version:** `1.1.0` — synchronized with the submitted manuscript
-> (review-10 snapshot, 2026-10-05). The previous release (`1.0.0`, 2026-09-18)
-> shipped an earlier, partially inconsistent analysis pass; this release
-> replaces it with the final scripts that produced the reported numbers. The two
-> superseded scripts are retained under `legacy_pre_review10/` for transparency.
+> **Version:** `1.1.1` — synchronized with the submitted manuscript
+> (review-11 snapshot, 2026-10-05). `1.1.0` shipped the review-10 pass; this
+> release corrects three things in the code itself, found on the eleventh
+> external review: (i) the eICU-CRD one-ICU-stay-per-patient selection rule in
+> `make_first_stays.py` sorted by `hospitaladmitoffset` ascending, which selects
+> the *last* ICU stay of the *latest* admission because eICU offsets are
+> measured from each admission; (ii) `extract_tier.py` intersected the legacy
+> arm with the audited core flag instead of the legacy arm's own core universe;
+> and (iii) `v7_identification_models.py` carried a dead `try/except` around
+> `RepeatedStratifiedGroupKFold`, a class that does not exist in scikit-learn.
+> The previous release (`1.0.0`, 2026-09-18) shipped an earlier, partially
+> inconsistent analysis pass. Two superseded scripts are retained under
+> `legacy_pre_review10/` for transparency.
 
 ## What the study does
 
@@ -56,9 +64,15 @@ analysis/npsle_io.py                single unified loader: every analysis script
 analysis/extract_cohort.py          builds the aligned three-database cohorts (core + broad
                                     phenotype, seven neuropsychiatric domains, covariates)
 analysis/extract_tier.py            diagnostic-confidence tier assignment
-analysis/make_first_stays.py        prerequisite: writes out/_first_stays.json — the first ICU
-                                    stay per subject (the first-stay main-analysis cohort); consumed
-                                    by npsle_io.load() and all first-stay sensitivity analyses
+analysis/make_first_stays.py        prerequisite: writes out/_first_stays.json — ONE ICU stay per
+                                    patient (the first ICU stay of the earliest admission; for
+                                    eICU-CRD the earliest hospitaldischargeyear, then the smallest
+                                    unitvisitnumber, then the largest hospitaladmitoffset). A
+                                    one-stay-per-patient selection, deliberately not called a
+                                    verified 'first stay', because eICU-CRD offsets are measured
+                                    from each admission and are not comparable across admissions.
+                                    Consumed by npsle_io.load() and every one-stay-per-patient
+                                    sensitivity analysis.
 analysis/describe_cohort.py         feature completeness / baseline / subtype–outcome summaries
 analysis/part1_epidemiology.py      Part 1: baseline, prevalence, outcomes, pooling
 analysis/positive_analyses.py       sepsis co-occurrence, tier stratification, severity and
@@ -68,8 +82,11 @@ analysis/v4_analyses.py … v11_algorithm_spec.py
                                     specific table (t20–t46, the bias-framework JSONs, and the
                                     Table S31 algorithm specification). They are kept in
                                     manuscript order so the provenance of every number is auditable.
-analysis/v7_identification_models.py Part 2: prediction models with patient-GROUPED
-                                    RepeatedStratifiedGroupKFold (scikit-learn ≥ 1.2)
+analysis/v7_identification_models.py Part 2: prediction models with patient-grouped internal
+                                    validation — five repeats of five-fold
+                                    StratifiedGroupKFold, each repeat with a prespecified random
+                                    seed. scikit-learn has no RepeatedStratifiedGroupKFold class,
+                                    so the repetition is implemented explicitly.
 analysis/v6_measurement_model.py    three-layer quantitative bias framework (Layers 1–3)
 analysis/v6_tier_multinomial.py     tier multinomial → tier coefficient ratio (ROR)
 analysis/v8_tables.py / v9_tables.py  table generators for S30/S31/S32 and S22–S25/S29
@@ -104,6 +121,9 @@ are written to `out/` (created on demand).
    `extract_tier.py`, `v4_analyses.py` and `v7_identification_models.py`, which
    consume it through `npsle_io.load()`. Without it those scripts raise
    `FileNotFoundError`.
+2c. **Exclusion-list audit (eICU-CRD)** — `python analysis/_r11_exclusion_audit.py`
+   writes `out/_r11_exclusion_audit.json`, the ON/OFF core, Tier B and control
+   counts that Table S31 reports; `v11_algorithm_spec.py` asserts against it.
 3. **Assign diagnostic-confidence tiers** — `python analysis/extract_tier.py`
    writes `out/tier_<db>.csv` (tier flags per ICU stay) and `out/t11_tier_terms.csv`.
 4. **Describe the cohort** — `python analysis/describe_cohort.py`.
@@ -113,10 +133,14 @@ are written to `out/` (created on demand).
    `python analysis/v4_analyses.py` … `python analysis/v11_algorithm_spec.py`
    (each reads the cohort/tier CSVs through `npsle_io.load()` and writes its
    result table into `out/`).
+5b. **ICD-9-CM sepsis-definition sensitivity** — `python analysis/_icd9_sensitivity.py`
+   writes `out/_icd9_sensitivity.json`, the primary-versus-prefix arms read by
+   `export_final_numbers.py`.
 6. **Part 2 models** —
    `python analysis/v7_identification_models.py` fits and cross-validates the
-   routine-data prediction models with **patient-grouped**
-   `RepeatedStratifiedGroupKFold` (five folds × five repeats).
+   routine-data prediction models with **patient-grouped** internal
+   validation: five repeats of five-fold `StratifiedGroupKFold`, each repeat
+   with a prespecified random seed and always grouped by patient.
 7. **Quantitative bias framework** — `python analysis/v6_measurement_model.py`
    writes `out/v6_qbf.json` (Layers 1–3), consumed by `v9_tables.py`.
 8. **Table assembly** — `python analysis/v8_tables.py` and

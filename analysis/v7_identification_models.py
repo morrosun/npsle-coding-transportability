@@ -4,7 +4,8 @@ v7 — identification models, re-run with the clustering structure respected.
 
 Changes relative to part2_model.py
 ----------------------------------
-1. Cross-validation is GROUPED BY PATIENT (RepeatedStratifiedGroupKFold).  The
+1. Cross-validation is GROUPED BY PATIENT: five repeats of five-fold
+   StratifiedGroupKFold, each repeat with a prespecified random seed.  The
    v6 run used RepeatedStratifiedKFold on a cohort in which one patient can
    contribute several ICU stays, so the same patient could appear in both the
    training and the validation fold.
@@ -46,12 +47,12 @@ LABEL = {"mimiciv": "MIMIC-IV", "eicu": "eICU-CRD", "nwicu": "NWICU"}
 FIRST = json.load(open(OUT + "/_first_stays.json", encoding="utf-8"))
 FKEY = {"mimiciv": "mimic_first", "eicu": "eicu_first", "nwicu": "nwicu_first"}
 
-try:
-    from sklearn.model_selection import RepeatedStratifiedGroupKFold
-    _GROUPED = True
-except ImportError:                                    # pragma: no cover
-    from sklearn.model_selection import StratifiedGroupKFold
-    _GROUPED = False
+# Grouped cross-validation.  scikit-learn provides StratifiedGroupKFold but has
+# no RepeatedStratifiedGroupKFold class, so repetition is implemented explicitly
+# as n_repeats independent StratifiedGroupKFold splits, each with a prespecified
+# random seed, always grouped by patient.
+from sklearn.model_selection import StratifiedGroupKFold
+_GROUPED = True
 
 FEATS_MAIN = ["age", "female", "gcs_min", "hr", "map", "temp", "spo2", "wbc",
               "creat", "sepsis_dx"]
@@ -207,19 +208,13 @@ def internal_cv_grouped(df, feats, model="logit", n_splits=5, n_repeats=5,
     grp = df["subject_id"].astype(str).values
     oof, cnt = np.zeros(len(df)), np.zeros(len(df))
     X0 = np.zeros(len(df))
-    if _GROUPED:
-        cv = RepeatedStratifiedGroupKFold(n_splits=n_splits, n_repeats=n_repeats,
-                                          random_state=RNG)
-        splits = cv.split(X0, y, groups=grp)
-    else:
-        from sklearn.model_selection import StratifiedGroupKFold
-        cv = StratifiedGroupKFold(n_splits=n_splits, shuffle=True,
-                                  random_state=RNG)
-        splits = []
-        for r in range(n_repeats):
-            c2 = StratifiedGroupKFold(n_splits=n_splits, shuffle=True,
-                                      random_state=RNG + r)
-            splits += list(c2.split(X0, y, groups=grp))
+    # n_repeats independent five-fold StratifiedGroupKFold splits, grouped by
+    # patient, each repeat using a prespecified random seed.
+    splits = []
+    for r in range(n_repeats):
+        c2 = StratifiedGroupKFold(n_splits=n_splits, shuffle=True,
+                                  random_state=RNG + r)
+        splits += list(c2.split(X0, y, groups=grp))
     for tr, te in splits:
         pp = Prep(feats, use_rcs=(model == "logit")).fit(df.iloc[tr])
         if model == "logit":

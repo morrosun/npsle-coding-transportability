@@ -1,4 +1,3 @@
-import os
 # -*- coding: utf-8 -*-
 """
 v7 — semantically restricted eICU phenotyping, and re-analysis of the core results.
@@ -29,6 +28,7 @@ carries the aetiology ("encephalopathy|hepatic").
 
 Outputs: out/v7_eicu_algorithm_compare.{txt,csv}, out/v7_restricted_tiers_eicu.csv
 """
+import os
 import io
 import json
 import math
@@ -307,7 +307,8 @@ def main():
     for name in ("legacy", "restricted"):
         e = variants[name]
         mm = pd.read_csv(OUT / "cohort_mimiciv.csv").merge(
-            pd.read_csv(OUT / "tier_mimiciv.csv"), on="stay_id", how="left")
+            pd.read_csv(OUT / "tier_mimiciv.csv"), on="stay_id", how="left",
+            suffixes=("", "_tier"))
         mm["_first"] = mm["stay_id"].isin(FIRST["mimic_first"])
         mm["_core"] = num(mm["npsle_core"]) == 1
         mm["_hi"] = num(mm["npsle_hi"]) == 1

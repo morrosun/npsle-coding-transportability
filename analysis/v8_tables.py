@@ -1,4 +1,3 @@
-import os
 # -*- coding: utf-8 -*-
 """Generate the three reproducibility tables that the external review demanded.
 
@@ -8,6 +7,7 @@ S32  cross-validation scheme x label set (2x2)
 
 Every number is read from the result files; nothing is typed by hand.
 """
+import os
 import io
 import json
 import pathlib
@@ -49,7 +49,7 @@ def build_s30():
     def pct(a, b):
         return 100.0 * a / b if b else float("nan")
 
-    for scope, key in (("All stays", "all"), ("First stay", "first")):
+    for scope, key in (("All stays", "all"), ("One stay per patient", "first")):
         for db in ("mimiciv", "eicu", "nwicu"):
             p, l = prim[db][key], leg[db][key]
             if p["core"] == 0 and l["core"] == 0:

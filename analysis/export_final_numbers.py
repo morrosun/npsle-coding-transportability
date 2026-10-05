@@ -1,4 +1,5 @@
 import os
+
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """Review-6, section 7: one canonical results export.
@@ -21,6 +22,7 @@ import re
 
 import numpy as np
 import pandas as pd
+from scipy import stats
 
 ROOT = pathlib.Path(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 OUT = ROOT / "out"
@@ -56,6 +58,40 @@ def itg(x):
         return x
 
 
+def _chi2(a, b, c, d):
+    """Uncorrected 2x2 chi-square from cell counts."""
+    n = a + b + c + d
+    return n * (a * d - b * c) ** 2 / ((a + b) * (c + d) * (a + c) * (b + d))
+
+
+def _rate(s):
+    """Parse an 'n/d' rate string into (n, d)."""
+    m = re.match(r"\s*(\d+)\s*/\s*(\d+)", str(s))
+    return int(m.group(1)), int(m.group(2))
+
+
+_FKEY = {"mimiciv": "mimic_first", "eicu": "eicu_first", "nwicu": "nwicu_first"}
+
+
+def composition(db, first_only=True):
+    """Core / Tier A+B / Tier C-only counts for a database, optionally restricted
+    to the one-stay-per-patient set.  Counts are read from the extraction and the
+    tier file so the composition quoted in the text cannot drift from them."""
+    c = rd("cohort_%s.csv" % db)
+    t = rd("tier_%s.csv" % db)
+    d = c.drop(columns=[x for x in t.columns if x != "stay_id" and x in c.columns]) \
+         .merge(t, on="stay_id", how="left")
+    if first_only:
+        ids = set(pd.Series(jn("_first_stays.json")[_FKEY[db]]).astype(str))
+        d = d[d["stay_id"].astype(str).isin(ids)]
+    n_ = lambda col: pd.to_numeric(d[col], errors="coerce").fillna(0)
+    core = n_("npsle_core") == 1
+    ab = core & ((n_("tier_a") == 1) | (n_("tier_b") == 1))
+    conly = core & (n_("tier_c") == 1) & ~ab
+    return dict(n=len(d), core=int(core.sum()), ab=int(ab.sum()),
+                conly=int(conly.sum()), un=int((core & ~ab & ~conly).sum()))
+
+
 # ---------------------------------------------------------- 1. main association
 a = rd("t22a_first_sepsis.csv")
 for _, r in a.iterrows():
@@ -70,7 +106,9 @@ for _, r in a.iterrows():
     put("assoc_%s_adj_p" % tag, num(r["校正 OR P"]), "t22a_first_sepsis.csv")
     put("assoc_%s_n" % tag, itg(r["模型 n"]), "t22a_first_sepsis.csv")
     put("assoc_%s_events" % tag, itg(r["事件数"]), "t22a_first_sepsis.csv")
-put("assoc_eicu_events_in_model", 59, "t22a_first_sepsis.csv (59 of the 64 core events)")
+    if tag == "eicu":
+        # core events that survive listwise deletion into the adjusted model
+        put("assoc_eicu_events_in_model", itg(r["事件数"]), "t22a_first_sepsis.csv")
 
 # ---------------------------------------------------------- 2. all stays (S12)
 b = rd("t16_sepsis_assoc.csv")
@@ -261,8 +299,27 @@ for key, field, src in (
 
 # ---------------------------------------------------------- 12. sepsis sensitivity
 a2 = rd("t22a_first_sepsis.csv")
-put("sepsis_legacy_mimic", "2.39 (1.32&ndash;4.33)", "_icd9_sensitivity.txt (prefix rule)")
-put("sepsis_legacy_pooled", "2.07 (1.30&ndash;3.30)", "_icd9_sensitivity.txt (prefix rule)")
+_icd9 = jn("_icd9_sensitivity.json")
+put("sepsis_legacy_mimic",
+    "%.2f (%.2f&ndash;%.2f)" % (_icd9["prefix"]["mimic"]["or_"],
+                               _icd9["prefix"]["mimic"]["lo"],
+                               _icd9["prefix"]["mimic"]["hi"]),
+    "_icd9_sensitivity.json :: prefix arm, MIMIC-IV")
+put("sepsis_legacy_pooled",
+    "%.2f (%.2f&ndash;%.2f)" % (_icd9["prefix"]["pooled"]["or_"],
+                               _icd9["prefix"]["pooled"]["lo"],
+                               _icd9["prefix"]["pooled"]["hi"]),
+    "_icd9_sensitivity.json :: prefix arm, pooled")
+put("sepsis_primary_mimic",
+    "%.2f (%.2f&ndash;%.2f)" % (_icd9["primary"]["mimic"]["or_"],
+                               _icd9["primary"]["mimic"]["lo"],
+                               _icd9["primary"]["mimic"]["hi"]),
+    "_icd9_sensitivity.json :: primary arm, MIMIC-IV")
+put("sepsis_primary_pooled",
+    "%.2f (%.2f&ndash;%.2f)" % (_icd9["primary"]["pooled"]["or_"],
+                               _icd9["primary"]["pooled"]["lo"],
+                               _icd9["primary"]["pooled"]["hi"]),
+    "_icd9_sensitivity.json :: primary arm, pooled")
 put("sepsis_case_event_stay", "31363270", "_probe_9959.txt")
 put("sepsis_case_control_stay", "32482959", "_probe_9959.txt")
 put("assoc_mimic_n", 348, "t22a_first_sepsis.csv")
@@ -279,8 +336,14 @@ put("shortstay_ab_eicu",
     "t36_exclusion_sensitivity.csv")
 
 # ---------------------------------------------------------- 14. chi-square used in 3.3
-put("chi2_assoc_mimic_p", 0.004, "recomputed from t22a_first_sepsis.csv counts (uncorrected chi-square)")
-put("chi2_assoc_eicu_p", 0.224, "recomputed from t22a_first_sepsis.csv counts (uncorrected chi-square)")
+_me, _md_ = _rate(F["assoc_mimic_rate_event"])
+_mc, _mdc = _rate(F["assoc_mimic_rate_control"])
+_ee, _ed = _rate(F["assoc_eicu_rate_event"])
+_ec, _edc = _rate(F["assoc_eicu_rate_control"])
+put("chi2_assoc_mimic_p", round(float(stats.chi2.sf(_chi2(_me, _md_ - _me, _mc, _mdc - _mc), 1)), 3),
+    "recomputed from t22a_first_sepsis.csv counts (uncorrected chi-square)")
+put("chi2_assoc_eicu_p", round(float(stats.chi2.sf(_chi2(_ee, _ed - _ee, _ec, _edc - _ec), 1)), 3),
+    "recomputed from t22a_first_sepsis.csv counts (uncorrected chi-square)")
 put("chi2_subtype_demyelination_p", 0.060,
     "recomputed: 21/645, 1/230, 1/50; chi-square = 5.62, df = 2")
 
@@ -298,21 +361,31 @@ put("apache_missing_eicu_firststay", "%d of %d (%.1f%%)" % (_ap_miss, _den, 100 
     "cohort_eicu.csv first stay per subject_id; denominator = assoc_eicu_n (t22a_first_sepsis.csv)")
 
 # ---------------------------------------------------------- 17. tier-share tests quoted in 3.2
-def _chi2(a, b, c, d):
-    n = a + b + c + d
-    num = n * (a * d - b * c) ** 2
-    den = (a + b) * (c + d) * (a + c) * (b + d)
-    return num / den
+_fs = {db: composition(db, True) for db in ("mimiciv", "eicu")}
+_as = {db: composition(db, False) for db in ("mimiciv", "eicu")}
 
-
-put("tier_c_share_chi2_firststay", round(_chi2(41, 20, 24, 40), 2),
-    "recomputed from v8_tables.json S30 first-stay cells (41/61 vs 24/64)")
-put("tier_c_share_chi2_allstays", round(_chi2(75, 48, 30, 53), 2),
-    "recomputed from v8_tables.json S30 all-stays cells (75/123 vs 30/83)")
-put("tier_ab_share_mimic_firststay_pct", round(100 * 20 / 61, 1),
-    "v8_tables.json S30 / t27_v9.csv: 20 of 61 core events")
-put("tier_ab_share_eicu_firststay_pct", round(100 * 38 / 64, 1),
-    "v8_tables.json S30 / t27_v9.csv: 38 of 64 core events")
+put("tier_c_share_chi2_firststay",
+    round(_chi2(_fs["mimiciv"]["conly"], _fs["mimiciv"]["core"] - _fs["mimiciv"]["conly"],
+                _fs["eicu"]["conly"], _fs["eicu"]["core"] - _fs["eicu"]["conly"]), 2),
+    "uncorrected 2x2 chi-square statistic, recomputed from the one-stay-per-patient tier cells")
+put("tier_c_share_p_firststay",
+    round(float(stats.chi2.sf(_chi2(_fs["mimiciv"]["conly"], _fs["mimiciv"]["core"] - _fs["mimiciv"]["conly"],
+                                   _fs["eicu"]["conly"], _fs["eicu"]["core"] - _fs["eicu"]["conly"]), 1)), 4),
+    "recomputed from the one-stay-per-patient tier cells")
+put("tier_c_share_chi2_allstays",
+    round(_chi2(_as["mimiciv"]["conly"], _as["mimiciv"]["core"] - _as["mimiciv"]["conly"],
+                _as["eicu"]["conly"], _as["eicu"]["core"] - _as["eicu"]["conly"]), 2),
+    "uncorrected 2x2 chi-square statistic, recomputed from the all-stays tier cells")
+put("tier_ab_share_mimic_firststay_pct", round(100 * _fs["mimiciv"]["ab"] / _fs["mimiciv"]["core"], 1),
+    "one-stay-per-patient tier cells: Tier A+B / core events")
+put("tier_ab_share_eicu_firststay_pct", round(100 * _fs["eicu"]["ab"] / _fs["eicu"]["core"], 1),
+    "one-stay-per-patient tier cells: Tier A+B / core events")
+put("tier_c_share_mimic_firststay_pct", round(100 * _fs["mimiciv"]["conly"] / _fs["mimiciv"]["core"], 1),
+    "one-stay-per-patient tier cells: Tier C-only / core events")
+put("tier_c_share_eicu_firststay_pct", round(100 * _fs["eicu"]["conly"] / _fs["eicu"]["core"], 1),
+    "one-stay-per-patient tier cells: Tier C-only / core events")
+put("tier_unassigned_eicu_firststay", _fs["eicu"]["un"],
+    "one-stay-per-patient tier cells: core events unassigned to any tier")
 
 # ---------------------------------------------------------- 16. legend text
 put("fig2_legend", "pooled adjusted OR = %s; Tier C %s; Tier A+B %s in MIMIC-IV and %s in eICU-CRD"
@@ -437,8 +510,10 @@ for _i, _k in ((0, "lo"), (1, "hi")):
     put("prefix_mimic_hi_%s" % _k,
         float(_bm.split("(")[1].split(")")[0].split("\u2013")[_i]),
         "_backup_pre_sepsis_fix/out_before/t25a_tier_with_pooled.csv")
-put("tier_c_contrast_pp_firststay", round(67.2 - 37.5, 1),
-    "derived from tier_share_rows (MIMIC-IV 67.2% vs eICU-CRD 37.5% of core events)")
+put("tier_c_contrast_pp_firststay",
+    round(100 * _fs["mimiciv"]["conly"] / _fs["mimiciv"]["core"]
+          - 100 * _fs["eicu"]["conly"] / _fs["eicu"]["core"], 1),
+    "computed from the one-stay-per-patient tier cells (MIMIC-IV vs eICU-CRD Tier C-only share)")
 
 # ------------------------------------------- 19. review-8 definition / counts
 # (a) calibration extremes, read from the model-performance table rather than

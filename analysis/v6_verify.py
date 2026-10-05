@@ -35,7 +35,9 @@ ADJ_BASE = ["age", "female", "lupus_nephritis", "creat", "plt"]
 def load(db):
     c = pd.read_csv(OUT / f"cohort_{db}.csv")
     t = pd.read_csv(OUT / f"tier_{db}.csv")
-    d = c.merge(t, on="stay_id", how="left")
+    # `npsle_core` now exists in BOTH tables; keep the cohort-derived column
+    # under its own name and carry the tier copy as `*_tier`.
+    d = c.merge(t, on="stay_id", how="left", suffixes=("", "_tier"))
     d["prolonged_icu"] = (pd.to_numeric(d["icu_los"], errors="coerce") > 7).astype(float)
     return d
 

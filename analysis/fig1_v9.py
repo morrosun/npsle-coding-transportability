@@ -24,6 +24,9 @@ FKEY = {"mimiciv": "mimic_first", "eicu": "eicu_first", "nwicu": "nwicu_first"}
 def load(db):
     c = pd.read_csv(OUT / f"cohort_{db}.csv")
     t = pd.read_csv(OUT / f"tier_{db}.csv")
+    # Both files now carry the phenotype flags; drop the cohort copies of the
+    # tier columns first so the merge cannot produce npsle_core_x / _y.
+    c = c.drop(columns=[x for x in t.columns if x != "stay_id" and x in c.columns])
     return c.merge(t, on="stay_id", how="left")
 
 

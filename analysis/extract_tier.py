@@ -300,8 +300,13 @@ def main():
             report("PRIMARY", db, m)
 
             tt_l, _ = extract_eicu(restricted=False)
+            # The LEGACY arm must be intersected with ITS OWN core universe
+            # (npsle_core_legacy), not the primary core, so that it reproduces
+            # the legacy universe described in Table 3 / Table S29.
+            core_legacy = (cohort.set_index("stay_id")["npsle_core_legacy"]
+                           .reindex(cohort["stay_id"]).fillna(0).astype(int).values)
             ml = build(cohort[["stay_id"]].merge(tt_l, on="stay_id", how="left"),
-                       core, has_a=True)
+                       core_legacy, has_a=True)
             ml.to_csv(os.path.join(OUT, "tier_eicu_legacy.csv"), index=False)
             report("LEGACY", db, ml)
         else:
