@@ -18,9 +18,12 @@ import numpy as np
 import pandas as pd
 import statsmodels.api as sm
 import xgboost as xgb
-from sklearn.model_selection import RepeatedStratifiedKFold
+from sklearn.model_selection import RepeatedStratifiedKFold, GroupKFold
 from sklearn.metrics import roc_auc_score
 from scipy import stats
+import sys, os
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import npsle_io
 
 warnings.filterwarnings("ignore")
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -28,12 +31,18 @@ OUT = os.path.join(ROOT, "out")
 LABEL = {"mimiciv": "MIMIC-IV", "eicu": "eICU-CRD", "nwicu": "NWICU"}
 DBS = list(LABEL)
 
-data = {}
-for db in DBS:
-    c = pd.read_csv(os.path.join(OUT, f"cohort_{db}.csv"))
-    t = pd.read_csv(os.path.join(OUT, f"tier_{db}.csv"))
-    data[db] = c.merge(t, on="stay_id", how="left")
-
+# Canonical row order. The extraction queries carry no ORDER BY, so the cohort
+# CSV comes back in whatever order the database happened to return: the eICU-CRD
+# eICU frame was re-ordered for 228 of its 230 stays between two runs of the same
+# extraction. Both GroupKFold (which assigns groups in order of first appearance)
+# and RepeatedStratifiedKFold (seeded, but position-dependent) are sensitive to
+# that order, so without an explicit sort the S11 decision-curve values and the
+# S19 label-confidence AUCs are not reproducible from the data alone -- the same
+# defect that was fixed for the CV comparison in v8_cv_label_2x2.py. Sorting on
+# (subject_id, stay_id) makes every published cell reproducible.
+data = {db: npsle_io.load(db)
+        .sort_values(["subject_id", "stay_id"], kind="mergesort")
+        .reset_index(drop=True) for db in DBS}
 # ============================================================ T11 分层构成
 rows = []
 for db in DBS:
@@ -182,11 +191,26 @@ t13.to_csv(os.path.join(OUT, "t13_meta_hi.csv"), index=False, encoding="utf-8-si
 FEATS = ["age", "female", "gcs_min", "hr", "map", "temp", "spo2", "wbc", "creat", "sepsis_dx"]
 
 
-def cv_pred(d, feats, target, model="xgb", seed=7):
+def cv_pred(d, feats, target, model="xgb", seed=7, grouped=True):
+    """Out-of-fold probabilities under the primary validation design.
+
+    grouped=True splits by patient, which is the scheme used for the
+    identification models (Section 2.7); the AUC intervals in boot_auc_ci
+    resample whole patients for the same reason.
+    """
     y = pd.to_numeric(d[target], errors="coerce").fillna(0).values.astype(int)
     X = d[feats].apply(pd.to_numeric, errors="coerce").values
+    groups = (d["subject_id"].astype(str).values if "subject_id" in d.columns
+              else np.arange(len(d)))
     oof, cnt = np.zeros(len(d)), np.zeros(len(d))
-    for tr, te in RepeatedStratifiedKFold(n_splits=5, n_repeats=5, random_state=seed).split(X, y):
+    if grouped:
+        n_splits = 5
+        splitter = GroupKFold(n_splits=n_splits)
+        folds = list(splitter.split(X, y, groups=groups))
+    else:
+        folds = list(RepeatedStratifiedKFold(
+            n_splits=5, n_repeats=5, random_state=seed).split(X, y))
+    for tr, te in folds:
         med = np.nanmedian(X[tr], axis=0); med = np.where(np.isnan(med), 0, med)
         Xtr = np.where(np.isnan(X[tr]), med, X[tr]); Xte = np.where(np.isnan(X[te]), med, X[te])
         if model == "xgb":
@@ -201,16 +225,31 @@ def cv_pred(d, feats, target, model="xgb", seed=7):
             p = r.predict(sm.add_constant((Xte - mu) / sd, has_constant="add"))
         oof[te] += p; cnt[te] += 1
     ok = cnt > 0
-    return y[ok], oof[ok] / cnt[ok]
+    return y[ok], oof[ok] / cnt[ok], (np.asarray(groups)[ok] if grouped else None)
 
 
-def boot_auc_ci(y, p, n=1000, seed=7):
+def boot_auc_ci(y, p, groups=None, n=1000, seed=7):
+    """Percentile bootstrap; resamples whole patients when groups is given."""
     rng = np.random.default_rng(seed)
-    i1, i0 = np.where(y == 1)[0], np.where(y == 0)[0]
+    if groups is None:
+        i1, i0 = np.where(y == 1)[0], np.where(y == 0)[0]
+        a = []
+        for _ in range(n):
+            idx = np.concatenate([rng.choice(i1, len(i1), True),
+                                  rng.choice(i0, len(i0), True)])
+            a.append(roc_auc_score(y[idx], p[idx]))
+        return np.percentile(a, [2.5, 97.5])
+    uniq = np.unique(groups)
+    pos = {g: np.where(groups == g)[0] for g in uniq}
     a = []
     for _ in range(n):
-        idx = np.concatenate([rng.choice(i1, len(i1), True), rng.choice(i0, len(i0), True)])
+        pick = rng.choice(uniq, size=len(uniq), replace=True)
+        idx = np.concatenate([pos[g] for g in pick])
+        if len(np.unique(y[idx])) < 2:
+            continue
         a.append(roc_auc_score(y[idx], p[idx]))
+    if len(a) < 50:
+        return np.array([np.nan, np.nan])
     return np.percentile(a, [2.5, 97.5])
 
 
@@ -227,8 +266,8 @@ for db in ["mimiciv", "eicu"]:
             rows.append({"数据库": LABEL[db], "标签定义": tcn, "事件数": int(s.sum()),
                          "XGBoost CV-AUC (95%CI)": "事件<20，不估计"})
             continue
-        y, p = cv_pred(d, FEATS, tgt, "xgb")
-        auc = roc_auc_score(y, p); ci = boot_auc_ci(y, p)
+        y, p, g = cv_pred(d, FEATS, tgt, "xgb")
+        auc = roc_auc_score(y, p); ci = boot_auc_ci(y, p, g)
         rows.append({"数据库": LABEL[db], "标签定义": tcn, "事件数": int(s.sum()),
                      "XGBoost CV-AUC (95%CI)": f"{auc:.3f} ({ci[0]:.3f}–{ci[1]:.3f})"})
 t15 = pd.DataFrame(rows)
@@ -243,7 +282,7 @@ def net_benefit(y, p, pt):
 rows = []
 for db in ["mimiciv", "eicu"]:
     d = data[db]
-    y, p = cv_pred(d, FEATS, "npsle_core", "xgb")
+    y, p, _g = cv_pred(d, FEATS, "npsle_core", "xgb")
     prev = y.mean()
     for pt in [0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.40, 0.50]:
         nb = net_benefit(y, p, pt)

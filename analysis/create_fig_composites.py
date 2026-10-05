@@ -6,18 +6,8 @@ S1 = strobe_flow (unchanged)."""
 import os
 from PIL import Image, ImageDraw, ImageFont
 
-REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-FIG = os.path.join(REPO, "fig")
-os.makedirs(FIG, exist_ok=True)
-# Font: first existing candidate is used (Windows / Linux / macOS).
-# Override with the NPSLE_FONT environment variable if needed.
-FONT = next((p for p in (
-    os.environ.get("NPSLE_FONT", ""),
-    "C:/Windows/Fonts/arial.ttf",
-    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-    "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
-    "/Library/Fonts/Arial.ttf",
-) if p and os.path.exists(p)), None)
+FIG = "fig"
+FONT = "C:/Windows/Fonts/arial.ttf"
 
 def font(size):
     try:

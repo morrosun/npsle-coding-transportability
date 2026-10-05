@@ -17,11 +17,12 @@ import pandas as pd
 import statsmodels.api as sm
 from scipy import stats
 import warnings
+import sys, os
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import npsle_io
 warnings.filterwarnings("ignore")
 
-# Repository root, resolved relative to this file so the pipeline runs
-# from a fresh clone on any platform.
-ROOT = pathlib.Path(__file__).resolve().parent.parent
+ROOT = pathlib.Path(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 OUT = ROOT / "out"
 DBS = ["mimiciv", "eicu", "nwicu"]
 LABEL = {"mimiciv": "MIMIC-IV", "eicu": "eICU-CRD", "nwicu": "NWICU"}
@@ -31,9 +32,7 @@ FKEY = {"mimiciv": "mimic_first", "eicu": "eicu_first", "nwicu": "nwicu_first"}
 
 
 def load(db):
-    c = pd.read_csv(OUT / f"cohort_{db}.csv")
-    t = pd.read_csv(OUT / f"tier_{db}.csv")
-    return c.merge(t, on="stay_id", how="left")
+    return npsle_io.load(db)
 
 
 def tier_counts(d):

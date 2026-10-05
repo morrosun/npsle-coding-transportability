@@ -20,6 +20,9 @@ from scipy import stats
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+import sys, os
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import npsle_io
 
 warnings.filterwarnings("ignore")
 os.environ["LC_ALL"] = "C"; os.environ["LANG"] = "C"; os.environ["PGCLIENTENCODING"] = "UTF8"
@@ -44,9 +47,8 @@ SEV = {"mimiciv": "sofa24", "eicu": "apache", "nwicu": "sofa24"}
 
 
 def load(db):
-    c = pd.read_csv(OUT / f"cohort_{db}.csv")
-    t = pd.read_csv(OUT / f"tier_{db}.csv")
-    d = c.merge(t, on="stay_id", how="left")
+    c = npsle_io.load(db)
+    d = c
     d["prolonged_icu"] = (pd.to_numeric(d["icu_los"], errors="coerce") > 7).astype(float)
     return d
 
@@ -166,12 +168,7 @@ t21 = None
 t21_note = ""
 try:
     import psycopg2
-    CFG = dict(
-    host=os.environ.get("NPSLE_DB_HOST", "localhost"),
-    port=int(os.environ.get("NPSLE_DB_PORT", "5432")),
-    user=os.environ.get("NPSLE_DB_USER", "postgres"),
-    password=os.environ.get("NPSLE_DB_PASSWORD", ""),
-)
+    CFG = dict(host="localhost", port=5432, user="postgres", password="1314")
     ids = tuple(int(x) for x in data["eicu"]["stay_id"].tolist())
     sql = f"""
     SELECT patientunitstayid AS stay_id,

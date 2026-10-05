@@ -75,8 +75,19 @@ def _save(path, **kw):
 def load(db):
     c = pd.read_csv(OUT / f"cohort_{db}.csv")
     t = pd.read_csv(OUT / f"tier_{db}.csv")
+    # The tier file is the authoritative, universe-restricted source of the
+    # phenotype flags, and the cohort file now also carries npsle_core. Without
+    # dropping the overlap first the merge produces npsle_core_x / npsle_core_y
+    # and every plain `npsle_core` lookup raises KeyError -- which is exactly why
+    # the English figure set had silently stopped regenerating.
+    c = c.drop(columns=[x for x in t.columns if x != "stay_id" and x in c.columns])
     d = c.merge(t, on="stay_id", how="left")
     d["prolonged_icu"] = (pd.to_numeric(d["icu_los"], errors="coerce") > 7).astype(float)
+    # Canonical row order, for the same reason as in npsle_io.load: this module
+    # reads the extraction CSV directly, and the extraction has no ORDER BY, so
+    # without an explicit sort any cross-validated figure would move with the
+    # row order.
+    d = d.sort_values(["subject_id", "stay_id"], kind="mergesort").reset_index(drop=True)
     return d
 
 
@@ -527,7 +538,9 @@ def fit_xgb_model(X, y):
     return m
 
 
-cohort = {db: pd.read_csv(OUT / f"cohort_{db}.csv") for db in LABEL}
+cohort = {db: pd.read_csv(OUT / f"cohort_{db}.csv")
+          .sort_values(["subject_id", "stay_id"], kind="mergesort")
+          .reset_index(drop=True) for db in LABEL}
 
 
 def internal_cv(df, feats, n_splits=5, n_repeats=5, target="npsle_core"):

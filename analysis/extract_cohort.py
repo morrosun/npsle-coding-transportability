@@ -1,3 +1,4 @@
+import os
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
@@ -19,12 +20,7 @@ import pandas as pd
 import psycopg2
 
 # ----------------------------- CONFIG -----------------------------
-CONFIG = dict(
-    host=os.environ.get("NPSLE_DB_HOST", "localhost"),
-    port=int(os.environ.get("NPSLE_DB_PORT", "5432")),
-    user=os.environ.get("NPSLE_DB_USER", "postgres"),
-    password=os.environ.get("NPSLE_DB_PASSWORD", ""),
-)
+CONFIG = dict(host="localhost", port=5432, user="postgres", password="1314")
 OUT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "out")
 os.makedirs(OUT, exist_ok=True)
 
@@ -58,6 +54,8 @@ AUX_ICD = {
     "metabolic_enceph": (r"^(G9341)",        r"^(34831)"),
 }
 # eICU 用 diagnosisstring 关键词
+# ---- LEGACY (whole-path) domain rules. Retained only so that the primary
+# algorithm can be compared against the algorithm it replaces (Table S30).
 NP_EICU = {
     "dom_seizure": r"seizure|status epilepticus",
     "dom_enceph":  r"encephalopathy|delirium|coma|altered mental|obtund|unresponsive",
@@ -66,6 +64,32 @@ NP_EICU = {
     "dom_mening":  r"meningitis|encephalitis",
     "dom_demyel":  r"myelitis|demyelinat|multiple sclerosis",
     "dom_pns":     r"guillain|myasthen|polyneuropathy|neuropathy|chorea",
+}
+# ---- PRIMARY (audited) domain rules.
+# These mirror the tier rules in extract_tier.py: explicit leaf patterns plus an
+# explicit exclusion list, because eICU-CRD stores diagnosisstring as a full
+# hierarchical path and a parent folder must not license its children. The
+# exclusion list is stated here so the core phenotype and the semantic tier are
+# derived from one definition rather than two that can drift apart.
+EICU_EXCLUDE_LEAF = (r"\|depression\b|\|anxiety\b|\|pain\b"
+                     r"|\|bipolar disorder\b|\|schizophrenia\b|\|dementia\b"
+                     r"|\|suicidal ideation\b|\|drug withdrawal syndrome\b"
+                     r"|\|sedated\b")
+NP_EICU_RESTRICTED = {
+    "dom_seizure": r"\|seizures\b|\|status epilepticus\b",
+    "dom_enceph":  (r"\|change in mental status\b|\|encephalopathy\b|\|coma\b"
+                    r"|\|delirium\b|\|stupor\b|\|obtundation\b"
+                    r"|\|unresponsive\b|\|confusion\b|\|agitation\b"),
+    "dom_psych":   r"\|psychosis\b|\|psychotic\b|\|schizophrenia\b|\|bipolar disorder\b|\|hallucination",
+    "dom_cvd":     (r"stroke|cerebral infarct|intracranial hemorrhage|subarachnoid"
+                    r"|cerebrovascular|cva|transient ischemic"),
+    "dom_mening":  r"meningitis|encephalitis|meningoencephalitis",
+    "dom_demyel":  r"myelitis|demyelinat|multiple sclerosis",
+    "dom_pns":     r"guillain|myasthen|polyneuropathy|neuropathy|chorea",
+}
+AUX_EICU_RESTRICTED = {
+    "hx_epilepsy":      r"epilepsy|seizure disorder",
+    "metabolic_enceph": r"metabolic encephalopathy|hepatic encephalopathy|uremic encephalopathy",
 }
 AUX_EICU = {
     "hx_epilepsy":      r"epilepsy",
@@ -118,7 +142,17 @@ def extract_mimic_like(db):
            {doms},
            max(CASE WHEN icd_code ~ '^(M3214|M3215)' OR icd_code ~ '^(58381|58081)' THEN 1 ELSE 0 END) AS lupus_nephritis,
            max(CASE WHEN icd_code ~ '^(D6861|D686)'  OR icd_code ~ '^(28981)'        THEN 1 ELSE 0 END) AS aps,
-           max(CASE WHEN icd_code ~ '^(A4[01]|R652)' OR icd_code ~ '^(038|9959)'     THEN 1 ELSE 0 END) AS sepsis_dx
+           -- PRIMARY sepsis definition (review-6 decision 1). The ICD-9-CM 995.9x
+           -- family is not uniform: 995.91 is sepsis and 995.92 severe sepsis,
+           -- whereas 995.90 (SIRS, unspecified) and 995.93 / 995.94 (SIRS / severe
+           -- SIRS due to a NON-INFECTIOUS process) do not establish infection. The
+           -- corrected rule therefore keeps only 99591-99592, so a stay cannot enter
+           -- the sepsis group on a non-infectious or unspecified systemic-inflammatory
+           -- code alone. The legacy prefix rule is retained in the same pass as
+           -- sepsis_dx_legacy, so the earlier definition can be reported as a
+           -- sensitivity analysis without a second extraction.
+           max(CASE WHEN icd_code ~ '^(A4[01]|R652)' OR icd_code ~ '^(038|9959[12])' THEN 1 ELSE 0 END) AS sepsis_dx,
+           max(CASE WHEN icd_code ~ '^(A4[01]|R652)' OR icd_code ~ '^(038|9959)'    THEN 1 ELSE 0 END) AS sepsis_dx_legacy
       FROM {H}.diagnoses_icd GROUP BY hadm_id
     )
     SELECT s.stay_id, s.subject_id, s.hadm_id, s.icu_los,
@@ -210,19 +244,33 @@ def extract_mimic_like(db):
 # ===================================================================
 #  eICU-CRD
 # ===================================================================
-def extract_eicu():
-    doms = ",\n           ".join(
-        f"max(CASE WHEN diagnosisstring ~* '{v}' THEN 1 ELSE 0 END) AS {k}"
-        for k, v in list(NP_EICU.items()) + list(AUX_EICU.items()))
 
-    base = q("eicu", f"""
+
+def extract_eicu():
+    """Extract the eICU-CRD cohort with BOTH domain rule sets in one pass.
+
+    The domain flags are computed in Python rather than in SQL because the
+    primary rules combine a leaf pattern with an explicit exclusion list, and
+    PostgreSQL regex semantics (\b, backslash escapes inside string literals)
+    do not match Python's. The query therefore returns the distinct
+    diagnosisstring per stay and the classification happens here, which also
+    makes the rule set auditable in one place.
+
+    dom_*_r columns use the PRIMARY audited rules; dom_* columns use the LEGACY
+    whole-path rules and are kept only for the algorithm comparison (Table S30).
+    npsle_core derives from the primary rules, npsle_core_legacy from the legacy.
+    """
+    base = q("eicu", """
     WITH sle AS (SELECT DISTINCT patientunitstayid AS stay_id
                  FROM eicu_crd.diagnosis WHERE diagnosisstring ~* 'lupus'),
     np AS (SELECT patientunitstayid AS stay_id,
-           {doms},
            max(CASE WHEN diagnosisstring ~* 'lupus nephritis|glomerulonephritis' THEN 1 ELSE 0 END) AS lupus_nephritis,
            max(CASE WHEN diagnosisstring ~* 'antiphospholipid|anticardiolipin' THEN 1 ELSE 0 END) AS aps,
-           max(CASE WHEN diagnosisstring ~* 'sepsis|septic shock' THEN 1 ELSE 0 END) AS sepsis_dx
+           -- eICU-CRD carries no ICD-9-CM 995.9x codes: sepsis is free-text, so the
+           -- corrected and legacy definitions coincide. The legacy column is emitted
+           -- anyway so every database exposes the same schema.
+           max(CASE WHEN diagnosisstring ~* 'sepsis|septic shock' THEN 1 ELSE 0 END) AS sepsis_dx,
+           max(CASE WHEN diagnosisstring ~* 'sepsis|septic shock' THEN 1 ELSE 0 END) AS sepsis_dx_legacy
            FROM eicu_crd.diagnosis GROUP BY 1)
     SELECT s.stay_id, p.uniquepid AS subject_id, p.gender, p.ethnicity AS race,
            CASE WHEN p.age = '> 89' THEN 90
@@ -235,6 +283,37 @@ def extract_eicu():
     JOIN eicu_crd.patient p ON p.patientunitstayid = s.stay_id
     """)
     base = base.loc[:, ~base.columns.duplicated()]
+
+    # ---- domain flags, computed in Python -------------------------------
+    ids = ",".join(str(int(x)) for x in base["stay_id"].unique())
+    diag = q("eicu", f"""
+        SELECT patientunitstayid AS stay_id, diagnosisstring AS term
+        FROM eicu_crd.diagnosis WHERE patientunitstayid IN ({ids})""")
+    diag["s"] = diag["term"].fillna("").astype(str).str.lower()
+    parts = diag["s"].str.split("|")
+    diag["leaf"] = parts.apply(lambda p: p[-1] if p else "")
+    diag["depth"] = parts.apply(len)
+    # The exclusion patterns are written with a leading "\|" because they are
+    # meant to be tested against the whole diagnosis string; leaf is the last
+    # component after splitting on "|" and therefore carries no leading bar,
+    # so matching the list against leaf makes it unreachable. Matching it
+    # against the whole string is what the list says, and it is also what
+    # stops a parent folder from licensing its children: the excludes that
+    # matter clinically are leaves such as |bipolar disorder, |schizophrenia
+    # and the subdivided children |depression|mild, |sedated|unresponsive.
+    keep = ~diag["s"].str.contains(EICU_EXCLUDE_LEAF, regex=True, na=False)
+    for k, v in NP_EICU_RESTRICTED.items():
+        hit = diag["stay_id"][keep & diag["s"].str.contains(v, regex=True, na=False)]
+        base[k + "_r"] = base["stay_id"].isin(set(hit)).astype(int)
+    for k, v in AUX_EICU_RESTRICTED.items():
+        hit = diag["stay_id"][diag["s"].str.contains(v, regex=True, na=False)]
+        base[k + "_r"] = base["stay_id"].isin(set(hit)).astype(int)
+    for k, v in NP_EICU.items():
+        hit = diag["stay_id"][diag["s"].str.contains(v, regex=True, na=False)]
+        base[k] = base["stay_id"].isin(set(hit)).astype(int)
+    for k, v in AUX_EICU.items():
+        hit = diag["stay_id"][diag["s"].str.contains(v, regex=True, na=False)]
+        base[k] = base["stay_id"].isin(set(hit)).astype(int)
 
     # 关键: eICU 的 vitalperiodic / lab / medication 都是亿行级大表,
     #       必须先把队列 stay_id 内联进 WHERE, 否则全表聚合会耗尽内存.
@@ -324,6 +403,17 @@ def extract_eicu():
     base["sofa24"] = pd.NA          # eICU 无 SOFA, 用 apache 代理
     base["sofa_cns"] = pd.NA
     base["db"] = "eicu"
+
+    # ---- promote the leaf-restricted domain rules to the primary columns ----
+    # The primary phenotype is the restricted one; the legacy whole-path
+    # columns are preserved with a _legacy suffix so that Table S30 can report
+    # the effect of the matching rule without re-querying the database.
+    for k in list(NP_EICU) + list(AUX_EICU):
+        r, l = "%s_r" % k, k
+        if r in base.columns:
+            base[l + "_legacy"] = pd.to_numeric(base[l], errors="coerce")
+            base[l] = base[r]
+            base = base.drop(columns=[r])
     return base
 
 
@@ -337,9 +427,26 @@ def finalize(df):
     df["npsle_broad"] = (df[ALL_DOMS].sum(axis=1) > 0).astype(int)
     # 敏感性: 把代谢性脑病也算作 NPSLE(文献中"急性意识错乱状态"的宽松版)
     df["npsle_sens"] = ((df[CORE_DOMS].sum(axis=1) + df["metabolic_enceph"]) > 0).astype(int)
+    # legacy core membership, present only for eICU-CRD (the only database whose
+    # domain rules were rewritten); kept so the matching-rule comparison uses
+    # the same cohort file rather than a separate extraction.
+    #
+    # The guard must test the CONTENT, not merely the presence, of the *_legacy
+    # columns: the whitelist below would otherwise materialise them as all-NA,
+    # `df[lc].sum(axis=1)` would return 0 for every row, and npsle_core_legacy
+    # would silently read as "no event" for MIMIC-IV and NWICU -- which is what
+    # npsle_io.load(db, legacy=True) would then hand to the label comparison.
+    lc = ["%s_legacy" % c for c in CORE_DOMS]
+    has_legacy = all(c in df.columns for c in lc) and not df[lc].isna().all().all()
+    if has_legacy:
+        df["npsle_core_legacy"] = (df[lc].sum(axis=1) > 0).astype(int)
+        df["npsle_broad_legacy"] = (
+            df[["%s_legacy" % c for c in ALL_DOMS]].sum(axis=1) > 0).astype(int)
     cols = (["db", "stay_id", "subject_id", "age", "female", "race",
              "npsle_core", "npsle_broad", "npsle_sens"] + ALL_DOMS + AUX_COLS +
-            ["lupus_nephritis", "aps", "sepsis_dx",
+            (["npsle_core_legacy", "npsle_broad_legacy"]
+             + ["%s_legacy" % c for c in ALL_DOMS + AUX_COLS] if has_legacy else []) +
+            ["lupus_nephritis", "aps", "sepsis_dx", "sepsis_dx_legacy",
              "sofa24", "sofa_cns", "apache", "gcs_min", "gcs_motor", "gcs_verbal", "gcs_eyes",
              "hr", "map", "rr", "temp", "spo2",
              "wbc", "lymph_abs", "hgb", "plt", "creat", "alb", "na", "bili", "inr", "lactate",
@@ -359,5 +466,18 @@ if __name__ == "__main__":
         d = finalize(d)
         p = os.path.join(OUT, f"cohort_{db}.csv")
         d.to_csv(p, index=False)
+        extra = ""
+        if "npsle_core_legacy" in d.columns:
+            extra = ("  legacy_core=%d" % int(d.npsle_core_legacy.sum()))
+            # the legacy cohort file is a column-level view of the same stays,
+            # so stay_id and every covariate are identical by construction
+            lg = d.copy()
+            for k in ALL_DOMS + AUX_COLS:
+                lk = "%s_legacy" % k
+                if lk in lg.columns:
+                    lg[k] = lg[lk]
+            lg = lg.drop(columns=[c for c in lg.columns if c.endswith("_legacy")])
+            lg.to_csv(os.path.join(OUT, f"cohort_{db}_legacy.csv"), index=False)
         print(f"    -> {p}   n={len(d)}  NPSLE_core={int(d.npsle_core.sum())}  "
-              f"NPSLE_broad={int(d.npsle_broad.sum())}  deaths={int(d.hosp_mort.sum())}", flush=True)
+              f"NPSLE_broad={int(d.npsle_broad.sum())}  "
+              f"deaths={int(d.hosp_mort.sum())}{extra}", flush=True)

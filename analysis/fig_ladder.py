@@ -1,3 +1,4 @@
+import os
 """Generate Figure 5: attribution ladder (MIMIC-IV in-hospital mortality).
 Each step changes one factor; OR on a log axis shows the 0.44 -> 0.96 climb.
 No on-plot title (per user request). Saved at fig/fig5_ladder.png (300 dpi).
@@ -9,9 +10,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 
-# Repository root, resolved relative to this file so the pipeline runs
-# from a fresh clone on any platform.
-ROOT = pathlib.Path(__file__).resolve().parent.parent
+ROOT = pathlib.Path(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 FIG = ROOT / "fig"
 FIG.mkdir(parents=True, exist_ok=True)
 

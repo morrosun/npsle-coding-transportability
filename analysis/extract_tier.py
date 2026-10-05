@@ -27,15 +27,11 @@ X       明确他因 : 缺氧后/肝性/代谢性/中毒性脑病, 感染性脑�
     npsle_any     = TierA or TierB or TierC             (≈ 原 npsle_core)
 """
 import os
+import numpy as np
 import pandas as pd
 import psycopg2
 
-CONFIG = dict(
-    host=os.environ.get("NPSLE_DB_HOST", "localhost"),
-    port=int(os.environ.get("NPSLE_DB_PORT", "5432")),
-    user=os.environ.get("NPSLE_DB_USER", "postgres"),
-    password=os.environ.get("NPSLE_DB_PASSWORD", ""),
-)
+CONFIG = dict(host="localhost", port=5432, user="postgres", password="1314")
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(ROOT, "out")
 os.makedirs(OUT, exist_ok=True)
@@ -119,7 +115,7 @@ def extract_icd(db):
 
 
 # ========================= eICU 分层 =========================
-# 优先级: A > X > B > C  (逐条术语判定)
+# 逐条术语优先级: A > X > B > C
 EI_A = r"systemic lupus erythematosus"
 EI_X = (r"post-anoxic|hepatic|metabolic|uremic"
         r"|drug withdrawal|alcohol|narcotic"
@@ -130,8 +126,58 @@ EI_B = r"seizure|status epilepticus|psychosis|psychotic|myelitis|demyelinat|mult
 EI_C = (r"change in mental status|altered mental|encephalopath|coma\b"
         r"|delirium|stupor|obtundation|unresponsive")
 
+# ---- PRIMARY rule set for eICU-CRD ----------------------------------------
+# eICU-CRD stores diagnosisstring as a full hierarchical path
+# (e.g. 'neurologic|altered mental status / pain|change in mental status').
+# "altered mental status / pain" is a real dictionary folder whose DIRECT
+# children denote an acute confusional state, so those are retained; the
+# misclassification arises only when a child is itself subdivided
+# (|depression|mild, |pain|moderate, |drug withdrawal syndrome|alcohol), where
+# the folder would otherwise vouch for an unrelated diagnosis.
+#
+# The rules below therefore use explicit leaf patterns plus an explicit
+# exclusion list, so that a reader can check the classification of every string
+# against the dictionary rather than trust a component-count heuristic.
+EI_B_LEAF = (r"\|seizures\b|\|status epilepticus\b"
+             r"|\|psychosis\b|\|psychotic\b"
+             r"|\|schizophrenia\b|\|bipolar disorder\b|\|hallucination"
+             r"|\|myelitis\b|\|demyelinat|\|multiple sclerosis")
+EI_C_LEAF = (r"\|change in mental status\b|\|encephalopathy\b|\|coma\b"
+             r"|\|delirium\b|\|stupor\b|\|obtundation\b"
+             r"|\|unresponsive\b|\|confusion\b|\|agitation\b")
+# concept names accepted anywhere in the path when they are also the leaf
+EI_B_ANY = (r"seizure|status epilepticus|psychosis|psychotic|myelitis"
+            r"|demyelinat|multiple sclerosis")
+EI_C_ANY = (r"encephalopath|delirium|coma\b|stupor|obtundation|unresponsive"
+            r"|confusion|change in mental status")
+# meningitis / encephalitis are accepted at any depth because the aetiology
+# lives in the parent node ('encephalitis|systemic lupus erythematosus',
+# 'meningitis|acute|bacterial')
+EI_MENING = r"meningitis|encephalitis|meningoencephalitis"
 
-def extract_eicu():
+# Leaves observed under the AMS folder that denote a different clinical entity.
+# The exclusion is stated explicitly so it can be audited against the dictionary.
+EI_EXCLUDE_LEAF = (r"\|depression\b|\|anxiety\b|\|pain\b"
+                   r"|\|bipolar disorder\b|\|schizophrenia\b|\|dementia\b"
+                   r"|\|suicidal ideation\b|\|drug withdrawal syndrome\b"
+                   r"|\|sedated\b")
+
+# Legacy whole-path patterns, retained only for the algorithm comparison.
+EI_B_LEGACY = EI_B
+EI_C_LEGACY = EI_C
+
+
+def extract_eicu(restricted=True):
+    """Extract eICU-CRD stay-level tier flags from diagnosisstring.
+
+    restricted=True  (PRIMARY) uses the audited leaf patterns and the explicit
+                     exclusion list defined at the top of this file.
+    restricted=False (LEGACY)  matches every tier on the whole string, which is
+                     the algorithm the primary rules replace (Table S30).
+
+    The caller intersects every tier indicator with npsle_core, so tier
+    membership can never extend outside the recorded core phenotype.
+    """
     raw = q("eicu", """
     WITH sle AS (SELECT DISTINCT patientunitstayid pid FROM eicu_crd.diagnosis
                  WHERE diagnosisstring ~* 'lupus')
@@ -139,13 +185,43 @@ def extract_eicu():
     FROM eicu_crd.diagnosis d JOIN sle ON sle.pid=d.patientunitstayid
     """)
     s = raw["term"].str.lower()
-    # A 仅在神经/CNS 路径下才算 (排除 'lupus' 本身的风湿路径条目)
+    parts = s.str.split("|")
+    depth = parts.apply(len)
+    leaf = parts.apply(lambda p: p[-1] if p else "")
+    # A and X stay path-based: the attribution / aetiology word is the deepest
+    # node of a four-level path, so trimming components would discard it.
     neuro_path = s.str.contains(r"neurologic\||cns infections", regex=True)
+
+    if not restricted:
+        m_c = s.str.contains(EI_C_LEGACY, regex=True, na=False)
+        m_b = s.str.contains(EI_B_LEGACY, regex=True, na=False)
+        excluded = pd.Series(False, index=raw.index)
+    else:
+        # EI_EXCLUDE_LEAF patterns carry a leading "\|" and are therefore meant
+        # for the whole diagnosis string, not for the leaf; leaf is the last
+        # component after splitting on "|" and has no leading bar, so testing
+        # it against leaf leaves the list inert. Whole-string matching is what
+        # the list states and what removes subdivided children such as
+        # |depression|mild, |drug withdrawal syndrome|alcohol and
+        # |sedated|unresponsive as well as the leaves |bipolar disorder and
+        # |schizophrenia (the latter two are also listed in EI_B_LEAF; the
+        # exclusion takes precedence, so those include entries are inert).
+        excluded = s.str.contains(EI_EXCLUDE_LEAF, regex=True, na=False)
+        m_c = (s.str.contains(EI_C_LEAF, regex=True, na=False)
+               | (s.str.contains(EI_C_ANY, regex=True, na=False)
+                  & (leaf.str.contains(EI_C_ANY, regex=True, na=False)
+                     | depth.le(3))))
+        m_b = (s.str.contains(EI_B_LEAF, regex=True, na=False)
+               | (s.str.contains(EI_B_ANY, regex=True, na=False)
+                  & leaf.str.contains(EI_B_ANY, regex=True, na=False)))
+        m_c &= ~excluded
+        m_b &= ~excluded
+
     raw["tier"] = None
-    raw.loc[s.str.contains(EI_C, regex=True), "tier"] = "C"
-    raw.loc[s.str.contains(EI_B, regex=True), "tier"] = "B"
-    raw.loc[s.str.contains(EI_X, regex=True) & neuro_path, "tier"] = "X"
-    raw.loc[s.str.contains(EI_A, regex=True) & neuro_path, "tier"] = "A"
+    raw.loc[m_c, "tier"] = "C"
+    raw.loc[m_b, "tier"] = "B"
+    raw.loc[s.str.contains(EI_X, regex=True, na=False) & neuro_path, "tier"] = "X"
+    raw.loc[s.str.contains(EI_A, regex=True, na=False) & neuro_path, "tier"] = "A"
     hit = raw.dropna(subset=["tier"])
 
     g = hit.assign(v=1).pivot_table(index="stay_id", columns="tier", values="v",
@@ -153,45 +229,89 @@ def extract_eicu():
     for c in ["A", "B", "C", "X"]:
         if c not in g.columns:
             g[c] = 0
-    g = g.rename(columns={"A": "tier_a", "B": "tier_b", "C": "tier_c", "X": "other_cause"})
+    g = g.rename(columns={"A": "tier_a", "B": "tier_b", "C": "tier_c",
+                          "X": "other_cause"})
     terms = (hit.groupby(["tier", "term"])["stay_id"].nunique()
              .reset_index(name="n").sort_values(["tier", "n"], ascending=[True, False]))
     terms.insert(0, "db", "eicu")
-    terms = terms.rename(columns={"term": "term", "tier": "tier"})
     terms["icd_code"] = ""
     return g[["stay_id", "tier_a", "tier_b", "tier_c", "other_cause"]], terms
 
 
 # ============================ 主流程 ============================
+def build(m, core, has_a):
+    """Apply the universe restriction and derive every tier indicator.
+
+    core : the recorded core phenotype flag, one entry per row of m.
+    """
+    for c in ["tier_b", "tier_c", "other_cause"]:
+        m[c] = m[c].fillna(0).astype(int)
+    if has_a:
+        m["tier_a"] = m["tier_a"].fillna(0).astype(int)
+        a = m["tier_a"].astype(int)
+    else:
+        m["tier_a"] = pd.NA     # not recoverable by the prespecified algorithm
+        a = pd.Series(0, index=m.index)
+
+    # Universe restriction. Without it, tier patterns sitting outside the
+    # prespecified core domains (e.g. eICU Tier A strings matching no core
+    # domain) leak into npsle_hi / npsle_any, and the A|B union stops equalling
+    # the sum of the mutually exclusive tiers.
+    m["npsle_core"] = core
+    m["npsle_hi"] = (((a | m["tier_b"]) > 0).astype(int) & core)
+    m["npsle_hi_str"] = (m["npsle_hi"] & (m["other_cause"] == 0)).astype(int)
+    m["npsle_any"] = (((a | m["tier_b"] | m["tier_c"]) > 0).astype(int) & core)
+    # mutually exclusive stay-level semantic tier, priority A > B > C
+    m["tier_primary"] = np.where(core == 0, "",
+                        np.where(a > 0, "A",
+                          np.where(m["tier_b"] > 0, "B",
+                            np.where(m["tier_c"] > 0, "C", ""))))
+    m["tier_c_only"] = ((m["tier_primary"] == "C").astype(int))
+    m["tier_unassigned"] = ((core == 1) & (m["npsle_hi"] == 0)
+                            & (m["tier_c_only"] == 0)).astype(int)
+    return m
+
+
+def report(tag, db, m):
+    ta = ("not recoverable" if m["tier_a"].isna().all()
+          else "%3d (%4.1f%%)" % (int(m["tier_a"].sum()), 100 * m["tier_a"].mean()))
+    print("[%s] %-8s n=%4d core=%3d TierA=%s TierB=%3d TierC=%3d "
+          "A+B=%3d C-only=%3d unassigned=%3d X=%3d"
+          % (tag, db, len(m), int(m["npsle_core"].sum()), ta,
+             int(m["tier_b"].sum()), int(m["tier_c"].sum()),
+             int(m["npsle_hi"].sum()), int(m["tier_c_only"].sum()),
+             int(m["tier_unassigned"].sum()), int(m["other_cause"].sum())))
+
+
 def main():
     all_terms = []
     for db in ["mimiciv", "nwicu", "eicu"]:
-        cohort = pd.read_csv(os.path.join(OUT, f"cohort_{db}.csv"))
-        tt, terms = extract_eicu() if db == "eicu" else extract_icd(db)
-        m = cohort[["stay_id"]].merge(tt, on="stay_id", how="left")
-        for c in ["tier_b", "tier_c", "other_cause"]:
-            m[c] = m[c].fillna(0).astype(int)
+        cohort = pd.read_csv(os.path.join(OUT, "cohort_%s.csv" % db))
+        core = (cohort.set_index("stay_id")["npsle_core"]
+                .reindex(cohort["stay_id"]).fillna(0).astype(int).values)
+
         if db == "eicu":
-            m["tier_a"] = m["tier_a"].fillna(0).astype(int)
+            # PRIMARY: leaf-restricted matching. The whole-path algorithm is
+            # retained only for the reproducibility comparison (Table S30).
+            tt, terms = extract_eicu(restricted=True)
+            m = build(cohort[["stay_id"]].merge(tt, on="stay_id", how="left"),
+                      core, has_a=True)
+            m.to_csv(os.path.join(OUT, "tier_eicu.csv"), index=False)
+            report("PRIMARY", db, m)
+
+            tt_l, _ = extract_eicu(restricted=False)
+            ml = build(cohort[["stay_id"]].merge(tt_l, on="stay_id", how="left"),
+                       core, has_a=True)
+            ml.to_csv(os.path.join(OUT, "tier_eicu_legacy.csv"), index=False)
+            report("LEGACY", db, ml)
         else:
-            m["tier_a"] = pd.NA          # 结构性不可得
+            tt, terms = extract_icd(db)
+            m = build(cohort[["stay_id"]].merge(tt, on="stay_id", how="left"),
+                      core, has_a=False)
+            m.to_csv(os.path.join(OUT, "tier_%s.csv" % db), index=False)
+            report("PRIMARY", db, m)
 
-        a = m["tier_a"].fillna(0).astype(int) if db == "eicu" else 0
-        m["npsle_hi"] = ((a | m["tier_b"]) > 0).astype(int)
-        m["npsle_hi_str"] = (m["npsle_hi"] & (m["other_cause"] == 0)).astype(int)
-        m["npsle_any"] = ((a | m["tier_b"] | m["tier_c"]) > 0).astype(int)
-        m.to_csv(os.path.join(OUT, f"tier_{db}.csv"), index=False)
         all_terms.append(terms)
-
-        n = len(m)
-        ta = "结构性不可得" if db != "eicu" else f'{int(m["tier_a"].sum()):3d} ({100*m["tier_a"].mean():.1f}%)'
-        print(f"[{db:8s}] n={n:4d}  TierA={ta}  "
-              f'TierB={int(m["tier_b"].sum()):3d} ({100*m["tier_b"].mean():4.1f}%)  '
-              f'TierC={int(m["tier_c"].sum()):3d} ({100*m["tier_c"].mean():4.1f}%)  '
-              f'他因={int(m["other_cause"].sum()):3d}  |  '
-              f'高置信={int(m["npsle_hi"].sum()):3d} ({100*m["npsle_hi"].mean():4.1f}%)  '
-              f'严格={int(m["npsle_hi_str"].sum()):3d}  '
-              f'合计={int(m["npsle_any"].sum()):3d} ({100*m["npsle_any"].mean():4.1f}%)')
 
     pd.concat(all_terms, ignore_index=True)[["db", "tier", "icd_code", "term", "n"]] \
         .to_csv(os.path.join(OUT, "t11_tier_terms.csv"), index=False)

@@ -1,3 +1,4 @@
+import os
 #!/usr/bin/env python3
 """V7 补算：回应第六轮审稿意见。
 
@@ -12,6 +13,9 @@ T39  表 6（Tier 分层脓毒症关联）补模型 n 列，交代 41+293=334 �
 """
 import json, os, pathlib, warnings
 import numpy as np, pandas as pd, statsmodels.api as sm
+import sys, os
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import npsle_io
 
 warnings.filterwarnings("ignore")
 os.environ["LC_ALL"] = "C"
@@ -26,9 +30,8 @@ SEV = {"mimiciv": "sofa24", "eicu": "apache", "nwicu": "sofa24"}
 
 
 def load(db):
-    c = pd.read_csv(OUT / f"cohort_{db}.csv")
-    t = pd.read_csv(OUT / f"tier_{db}.csv")
-    d = c.merge(t, on="stay_id", how="left")
+    c = npsle_io.load(db)
+    d = c
     d["prolonged_icu"] = (pd.to_numeric(d["icu_los"], errors="coerce") > 7).astype(float)
     return d
 

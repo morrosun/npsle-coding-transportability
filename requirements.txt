@@ -9,3 +9,6 @@ xgboost>=2.1
 matplotlib>=3.9
 Pillow>=10.4
 psycopg2-binary>=2.9
+# optional: only needed to regenerate the SHAP panel of the model figure
+shap>=0.45
+cloudpickle>=3.0

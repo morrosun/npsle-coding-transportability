@@ -15,6 +15,9 @@ import numpy as np
 import pandas as pd
 import statsmodels.api as sm
 from scipy import stats
+import sys, os
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import npsle_io
 
 warnings.filterwarnings("ignore")
 os.environ["LC_ALL"] = "C"; os.environ["LANG"] = "C"
@@ -30,9 +33,8 @@ MIN_TOTAL_EV, MIN_EXP_EV_TIER = 10, 3
 
 
 def load(db):
-    c = pd.read_csv(OUT / f"cohort_{db}.csv")
-    t = pd.read_csv(OUT / f"tier_{db}.csv")
-    d = c.merge(t, on="stay_id", how="left")
+    c = npsle_io.load(db)
+    d = c
     d["prolonged_icu"] = (pd.to_numeric(d["icu_los"], errors="coerce") > 7).astype(float)
     return d
 

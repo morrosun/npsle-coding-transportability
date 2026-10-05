@@ -9,12 +9,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.patches import FancyBboxPatch, FancyArrowPatch
 
-import os, pathlib
-
-REPO = pathlib.Path(__file__).resolve().parent.parent
-FIG = REPO / "fig"
-FIG.mkdir(exist_ok=True)
-OUT = str(FIG / "strobe_flow.png")
+OUT = r"D:\BaiduSyncdisk\MIMIC\NPSLE1\fig\strobe_flow.png"
 
 fig, ax = plt.subplots(figsize=(8.0, 6.4), dpi=300)
 ax.set_xlim(0, 100)

@@ -42,7 +42,17 @@ MIN_TOTAL_EV, MIN_EXP_EV = 10, 5
 def load(db):
     c = pd.read_csv(OUT / f"cohort_{db}.csv")
     t = pd.read_csv(OUT / f"tier_{db}.csv")
-    d = c.merge(t, on="stay_id", how="left")
+    # The tier file is the authoritative, universe-restricted carrier of the
+    # phenotype columns. Dropping them from the cohort frame first prevents the
+    # merge from suffixing them to npsle_core_x / npsle_core_y, which left
+    # 'npsle_core' undefined in the merged frame (this is the same rule that
+    # scripts/npsle_io.py applies).
+    drop = [x for x in ("npsle_core", "npsle_broad", "npsle_sens",
+                        "npsle_hi", "npsle_hi_str", "npsle_any", "tier_a",
+                        "tier_b", "tier_c", "other_cause", "tier_primary",
+                        "tier_c_only", "tier_unassigned")
+            if x in c.columns]
+    d = c.drop(columns=drop).merge(t, on="stay_id", how="left")
     d["prolonged_icu"] = (pd.to_numeric(d["icu_los"], errors="coerce") > 7).astype(float)
     return d
 

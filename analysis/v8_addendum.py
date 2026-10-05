@@ -21,8 +21,11 @@ T42  粗率（未校正）层面的估计量对比 —— 证明 SE 展宽在无
 输出 out/t40_severity_sens_v2.csv, out/t41_first_outcomes_3models.csv,
      out/t41m_first_meta_3models.csv, out/t42_crude_se.csv, out/_v8_key.json
 """
-import json, os, pathlib, warnings
+import json, os, pathlib, sys, warnings
 import numpy as np, pandas as pd, statsmodels.api as sm
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import npsle_io
 
 warnings.filterwarnings("ignore")
 os.environ["LC_ALL"] = "C"
@@ -40,9 +43,7 @@ OUTCOMES = [("院内死亡", "hosp_mort"), ("24h 内机械通气", "vent24"), ("
 
 
 def load(db):
-    c = pd.read_csv(OUT / f"cohort_{db}.csv")
-    t = pd.read_csv(OUT / f"tier_{db}.csv")
-    d = c.merge(t, on="stay_id", how="left")
+    d = npsle_io.load(db)
     d["prolonged_icu"] = (pd.to_numeric(d["icu_los"], errors="coerce") > 7).astype(float)
     return d
 

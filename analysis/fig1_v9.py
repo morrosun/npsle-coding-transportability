@@ -13,9 +13,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-# Repository root, resolved relative to this file so the pipeline runs
-# from a fresh clone on any platform.
-ROOT = pathlib.Path(__file__).resolve().parent.parent
+ROOT = pathlib.Path(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 OUT = ROOT / "out"; FIG = ROOT / "fig"
 DBS = ["mimiciv", "eicu", "nwicu"]
 LABEL = {"mimiciv": "MIMIC-IV", "eicu": "eICU-CRD", "nwicu": "NWICU"}
@@ -153,15 +151,7 @@ print("wrote tierC_reprod.png (mutually-exclusive C-only, both bases)")
 
 # ================================================= compose fig1_tier_dual.png
 from PIL import Image, ImageDraw, ImageFont
-# Font: first existing candidate is used (Windows / Linux / macOS).
-# Override with the NPSLE_FONT environment variable if needed.
-FONT = next((p for p in (
-    os.environ.get("NPSLE_FONT", ""),
-    "C:/Windows/Fonts/arial.ttf",
-    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-    "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
-    "/Library/Fonts/Arial.ttf",
-) if p and os.path.exists(p)), None)
+FONT = "C:/Windows/Fonts/arial.ttf"
 def font(size):
     try:
         return ImageFont.truetype(FONT, size)
