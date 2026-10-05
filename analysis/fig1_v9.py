@@ -102,7 +102,7 @@ print("wrote tier_composition.png")
 # ================================================= (b) C-only of core events, both bases
 rows = []
 for db in ["mimiciv", "eicu"]:
-    for cname, df in [("First stay (primary)", None), ("All stays", None)]:
+    for cname, df in [("One stay per patient", None), ("All stays", None)]:
         pass
 # build per-database / per-cohort C-only proportion
 sub = []

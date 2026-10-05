@@ -88,7 +88,7 @@ for db in DBS:
 
     a = mk(n_all, n_core_all, n_ab_all, n_conly_all, n_un_all, n_ta_all, ta_na_all)
     b = mk(n_f, n_core_f, n_ab_f, n_conly_f, n_un_f, n_ta_f, ta_na_f)
-    for tag, m in [("All stays", a), ("First stay (primary)", b)]:
+    for tag, m in [("All stays", a), ("One stay per patient (primary)", b)]:
         rows.append({"Database": LABEL[db], "Cohort": tag, "ICU stays": m["n"],
                      "Core events n": m["core"],
                      "Tier A n (% of ICU stays)": m["ta"],

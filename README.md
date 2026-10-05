@@ -12,29 +12,43 @@ included; all cohorts are derived from PhysioNet-credentialed databases
 Researchers with PhysioNet credentials can reconstruct the cohorts by running
 the SQL check and extraction scripts against their own local database copies.
 
-> **Version:** `1.1.2` — synchronized with the submitted manuscript
-> (review-11 snapshot, 2026-10-05). `1.1.1` corrected three things in the code
+> **Version:** `1.1.3` — synchronized with the submitted manuscript
+> (review-12 snapshot, 2026-10-06). `1.1.1` corrected three things in the code
 > itself, found on the eleventh external review: (i) the eICU-CRD
 > one-ICU-stay-per-patient selection rule in `make_first_stays.py` sorted by
-> `hospitaladmitoffset` ascending, which selects the *last* ICU stay of the
-> *latest* admission because eICU offsets are measured from each admission;
-> (ii) `extract_tier.py` intersected the legacy arm with the audited core flag
-> instead of the legacy arm's own core universe; and (iii) 
+> `hospitaladmitoffset` ascending. Because eICU offsets are measured from each
+> ICU admission, that ordering cannot establish a chronological sequence across
+> hospital admissions, and within one admission it is the *earlier* ICU stay
+> that carries the *larger* offset — so ascending order is biased towards the
+> *later* ICU stay of an admission. The rule now sorts by discharge year,
+> `unitvisitnumber`, `hospitaladmitoffset` descending and `patientunitstayid`,
+> a deterministic choice within the identified lupus stays that makes no
+> first-stay claim; (ii) `extract_tier.py` intersected the legacy arm with the
+> audited core flag instead of the legacy arm's own core universe; and (iii) 
 > `v7_identification_models.py` carried a dead `try/except` around
 > `RepeatedStratifiedGroupKFold`, a class that does not exist in scikit-learn.
-> This release (`1.1.2`) fixes two further defects found while checking the
-> *outputs* rather than the text: `fig_en.py` still reproduced the ROC,
-> calibration and decision-curve panels from the retired `part2_model.py`
-> (stay-level `RepeatedStratifiedKFold`), so the ROC legend read AUC 0.578 /
-> 0.689 instead of the patient-grouped 0.514 / 0.686 reported in the
-> manuscript; and the composite figures had not been rebuilt after the `1.1.1`
-> reruns, so Figure 2 still carried pre-review estimates. It also removes the
-> last machine-specific paths (`make_strobe.py` output file, the Arial font
-> path in `create_fig_composites.py` / `fig1_v9.py`) and renames the remaining
-> "first stay" labels to "one stay per patient".
-> Earlier releases: `1.1.0` (2026-10-05) shipped the review-10 pass; `1.0.0`
-> (2026-09-18) an earlier, partially inconsistent analysis pass. Two superseded
-> scripts are retained under `legacy_pre_review10/` for transparency.
+> `1.1.2` fixed two further defects found while checking the *outputs* rather
+> than the text: `fig_en.py` still reproduced the ROC, calibration and
+> decision-curve panels from the retired `part2_model.py` (stay-level
+> `RepeatedStratifiedKFold`), so the ROC legend read AUC 0.578 / 0.689 instead
+> of the patient-grouped 0.514 / 0.686 reported in the manuscript; and the
+> composite figures had not been rebuilt after the `1.1.1` reruns, so Figure 2
+> still carried pre-review estimates. It also removed the last machine-specific
+> paths (`make_strobe.py` output file, the Arial font path in
+> `create_fig_composites.py` / `fig1_v9.py`).
+> This release (`1.1.3`) completes the "one stay per patient" renaming in the
+> archived code: `v9_revision.py` (Supplementary Table S4 cohort rows) and
+> `fig1_v9.py` still emitted the row label "First stay (primary)". **No number
+> and no figure changes** — every estimate in the manuscript was already
+> reproducible from `1.1.2`; this release only makes the archived code emit the
+> same cohort labels as the submitted tables. (The S6/S22 cohort labels are
+> produced by `v9_outcome_table.py`, a manuscript-build script that consumes
+> intermediate CSV files outside this archive and is therefore not included
+> here.)
+> Earlier releases: `1.1.2` and `1.1.1` (2026-10-05) as above; `1.1.0`
+> (2026-10-05) shipped the review-10 pass; `1.0.0` (2026-09-18) an earlier,
+> partially inconsistent analysis pass. Two superseded scripts are retained
+> under `legacy_pre_review10/` for transparency.
 
 ## What the study does
 
