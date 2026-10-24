@@ -131,16 +131,29 @@ Run every script from the **repository root**; all paths are resolved relative t
 the repository (`npsle_io.py` is the single source of `ROOT`/`OUT`), and outputs
 are written to `out/` (created on demand).
 
+**No data are distributed.** `out/` is generated, not shipped: the PhysioNet Data
+Use Agreement forbids redistributing patient-level extracts, so a reproducer needs
+their own credentialed copies of MIMIC-IV, eICU-CRD and NWICU and must run steps 1-2
+before anything else. Every statistic in the manuscript can be regenerated from them;
+`out/final_numbers.json` is the final consolidated export.
+
+Reproduction is **value-level, not byte-level**: `extract_cohort.py` issues no
+`ORDER BY`, so the row order of `cohort_*.csv` can differ between runs on the same
+data, and a few pooled estimates differ in the last floating-point digit. Every
+reported statistic is unchanged; do not read a differing md5 as a differing result.
+A clean copy regenerates `out/final_numbers.json` with all of its keys and the same
+values.
+
 1. **Screen the databases** — `psql -f sql/feasibility.sql` against each local
    copy records which SLE and neuropsychiatric code families are actually
    present, and which are harmonisable across databases.
 2. **Extract the cohorts** —
    `python analysis/extract_cohort.py mimiciv eicu nwicu`
    writes `out/cohort_<db>.csv` with column names aligned across databases.
-2b. **Generate the first-stay index (required prerequisite)** —
+2b. **Generate the one-stay-per-patient index (required prerequisite)** —
    `python analysis/make_first_stays.py`
-   reads the cohort CSVs and writes `out/_first_stays.json` — the first ICU stay
-   per subject, which defines the first-stay main-analysis cohort (MIMIC-IV 354,
+   reads the cohort CSVs and writes `out/_first_stays.json` — one ICU stay per
+   subject, which defines the main-analysis cohort (MIMIC-IV 354,
    eICU-CRD 186, NWICU 43; total 583). This file is required before
    `extract_tier.py`, `v4_analyses.py` and `v7_identification_models.py`, which
    consume it through `npsle_io.load()`. Without it those scripts raise
@@ -148,6 +161,13 @@ are written to `out/` (created on demand).
 2c. **Exclusion-list audit (eICU-CRD)** — `python analysis/_r11_exclusion_audit.py`
    writes `out/_r11_exclusion_audit.json`, the ON/OFF core, Tier B and control
    counts that Table S31 reports; `v11_algorithm_spec.py` asserts against it.
+2d. **Two count artefacts the manuscript quotes** —
+   `python analysis/_r9_exclusion_stay_audit.py` writes `t45`/`t46` (the
+   exclusion-list stay audit and its per-domain effect) and
+   `python analysis/_r8_extra_counts.py` writes `t43` (eICU-CRD diagnostic
+   timing) and `t44` (complete-case composition of the Tier A+B models). All four
+   are read by `export_final_numbers.py`; without them the export stops with
+   `FileNotFoundError`.
 3. **Assign diagnostic-confidence tiers** — `python analysis/extract_tier.py`
    writes `out/tier_<db>.csv` (tier flags per ICU stay) and `out/t11_tier_terms.csv`.
 4. **Describe the cohort** — `python analysis/describe_cohort.py`.
@@ -156,7 +176,11 @@ are written to `out/` (created on demand).
    `python analysis/positive_analyses.py`, then the sequential chain
    `python analysis/v4_analyses.py` … `python analysis/v11_algorithm_spec.py`
    (each reads the cohort/tier CSVs through `npsle_io.load()` and writes its
-   result table into `out/`).
+   result table into `out/`). Three later steps are prerequisites of the
+   provenance export and are easy to miss: `v8_addendum.py` (writes
+   `t40`/`t41`/`t41m`/`t42`), `v9_revision.py` (writes `t27_v9` and the
+   revision key) and `v8_cv_label_2x2.py` (writes `v8_cv_label_2x2.json`, read by
+   `v8_tables.py`).
 5b. **ICD-9-CM sepsis-definition sensitivity** — `python analysis/_icd9_sensitivity.py`
    writes `out/_icd9_sensitivity.json`, the primary-versus-prefix arms read by
    `export_final_numbers.py`.
@@ -169,7 +193,10 @@ are written to `out/` (created on demand).
    writes `out/v6_qbf.json` (Layers 1–3), consumed by `v9_tables.py`.
 8. **Table assembly** — `python analysis/v8_tables.py` and
    `python analysis/v9_tables.py` build the supplementary tables; `v6_tier_multinomial.py`
-   builds the tier coefficient ratio.
+   builds the tier coefficient ratio. `v11_algorithm_spec.py` (Table S31) also
+   reads `scripts/_jce_body.html` from the manuscript build layer; if that file is
+   absent it stops with `FileNotFoundError`, and the analysis half of the package
+   is complete without it.
 9. **Figures** — run the panel producers first, in this order, because several of
    them write the same file name and the last writer wins:
    `python analysis/fig_en.py` (English panels, including the ROC / calibration /

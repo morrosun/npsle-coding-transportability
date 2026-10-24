@@ -703,7 +703,10 @@ from PIL import Image
 CHECK = ["tier_composition.png", "label_auc.png", "tierC_reprod.png",
          "forest_sepsis_first.png", "forest_tier_first.png", "forest_outcomes_first.png",
          "roc_xgb.png", "calib_xgb.png", "dca_xgb.png",
-         "shap_mimiciv.png", "shap_eicu.png", "strobe_flow.png"]
+         "shap_mimiciv.png", "shap_eicu.png"]
+# strobe_flow.png is produced by make_strobe.py, which runs after this script;
+# it is deliberately not checked here, so that a failure here means a panel this
+# script was supposed to draw is missing.
 
 print("\n" + "=" * 72)
 print("VERIFICATION  (exists / size / dpi >= 300)")
@@ -724,3 +727,7 @@ for fn in CHECK:
     print(f"  [{'OK ' if ok else 'BAD'}] {fn:28s} {w:5d}x{h:<5d} dpi={dv}")
 print("=" * 72)
 print("ALL FIGURES OK" if allok else "SOME FIGURES FAILED")
+# Fail loudly: the SHAP panel is caught and printed above rather than raised, so
+# without this the script would exit 0 while a panel is missing.
+if not allok:
+    raise SystemExit(1)

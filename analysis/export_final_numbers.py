@@ -500,16 +500,26 @@ put("sev_delta_rounded_mimic", round(100 * (1.54 / 1.82 - 1), 1),
 put("sev_delta_rounded_eicu", round(100 * (1.65 / 1.81 - 1), 1),
     "derived from the rounded t40 severity-complete values (1.81 -> 1.65)")
 # review-7: the pre-correction value quoted in the Table S25 sparsity note.
-_before = pd.read_csv(ROOT / "_backup_pre_sepsis_fix" / "out_before"
-                      / "t25a_tier_with_pooled.csv", encoding="utf-8-sig")
-_bm = str(_before.loc[_before["数据库"] == "MIMIC-IV",
-                      "校正 OR (95%CI)†"].iloc[0])
-put("prefix_mimic_hi_or", float(_bm.split(" (")[0]),
-    "_backup_pre_sepsis_fix/out_before/t25a_tier_with_pooled.csv")
-for _i, _k in ((0, "lo"), (1, "hi")):
-    put("prefix_mimic_hi_%s" % _k,
-        float(_bm.split("(")[1].split(")")[0].split("\u2013")[_i]),
-        "_backup_pre_sepsis_fix/out_before/t25a_tier_with_pooled.csv")
+# review-14: the pre-correction snapshot is read from out/ rather than from a
+# working-directory backup. It is a patient-derived table and is therefore not
+# distributed with this repository; if it is absent the three pre-correction
+# values are skipped with a warning, and every other key is still exported.
+_PRE = OUT / "t25a_tier_with_pooled_pre_fix.csv"
+if not _PRE.exists():
+    print("[skip] %s not present: pre-correction values omitted "
+          "(patient-derived, not distributed)" % _PRE.name)
+    _before = None
+else:
+    _before = pd.read_csv(_PRE, encoding="utf-8-sig")
+_bm = None if _before is None else str(
+    _before.loc[_before["数据库"] == "MIMIC-IV", "校正 OR (95%CI)†"].iloc[0])
+if _bm is not None:
+    put("prefix_mimic_hi_or", float(_bm.split(" (")[0]),
+        "out/t25a_tier_with_pooled_pre_fix.csv")
+    for _i, _k in ((0, "lo"), (1, "hi")):
+        put("prefix_mimic_hi_%s" % _k,
+            float(_bm.split("(")[1].split(")")[0].split("\u2013")[_i]),
+            "out/t25a_tier_with_pooled_pre_fix.csv")
 put("tier_c_contrast_pp_firststay",
     round(100 * _fs["mimiciv"]["conly"] / _fs["mimiciv"]["core"]
           - 100 * _fs["eicu"]["conly"] / _fs["eicu"]["core"], 1),

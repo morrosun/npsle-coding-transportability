@@ -29,8 +29,14 @@ os.makedirs(FIG, exist_ok=True)
 
 DBS = ["mimiciv", "eicu", "nwicu"]
 LABEL = {"mimiciv": "MIMIC-IV", "eicu": "eICU-CRD", "nwicu": "NWICU"}
-ERA = {"mimiciv": "单中心学术 · 2008–2019", "eicu": "208 家医院多中心 · 2014–2015",
+ERA = {"mimiciv": "单中心学术 · 2008–2022", "eicu": "208 家医院多中心 · 2014–2015",
        "nwicu": "芝加哥多院区 · 2020–2022 (COVID)"}
+
+
+# Variables the source database does not collect at all. They are reported as
+# "not available" even if an older cohort CSV still carries a 0, because that 0
+# would otherwise be read as a genuine zero-exposure signal.
+UNAVAILABLE = {"eicu": {"lupus_nephritis", "is_any", "hx_epilepsy"}}
 
 DOMS = ["dom_seizure", "dom_enceph", "dom_psych", "dom_mening", "dom_demyel", "dom_cvd", "dom_pns"]
 DOM_CN = {"dom_seizure": "急性癫痫发作", "dom_enceph": "急性意识障碍/脑病", "dom_psych": "精神病性障碍",
@@ -79,7 +85,7 @@ for db in DBS:
         # 显式标注而非静默跳过 —— 这是跨库可移植性研究必须向读者披露的变量可得性差异。
         if v not in d.columns:
             continue
-        if d[v].notna().sum() == 0:
+        if v in UNAVAILABLE.get(db, ()) or d[v].notna().sum() == 0:
             rows.append({"数据库": LABEL[db], "变量": CN.get(v, v),
                          "非NPSLE": "该库不可获得", "NPSLE": "该库不可获得", "SMD": "—", "P": "—"})
             continue
