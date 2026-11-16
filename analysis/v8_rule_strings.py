@@ -8,6 +8,8 @@ import pathlib
 
 import pandas as pd
 
+import db  # connection parameters, see db.py
+
 ROOT = pathlib.Path(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 OUT = ROOT / "out"
 lines = []
@@ -24,8 +26,7 @@ def main():
 
     import psycopg2
     ids = p["stay_id"].astype(int).tolist()
-    with psycopg2.connect(dbname="eicu", host="localhost", port=5432,
-                          user="postgres", password="1314") as cn:
+    with psycopg2.connect(**db.params_for("eicu")) as cn:
         d = pd.read_sql(
             "SELECT patientunitstayid AS stay_id, diagnosisstring AS term "
             "FROM eicu_crd.diagnosis WHERE patientunitstayid = ANY(%s)", cn,

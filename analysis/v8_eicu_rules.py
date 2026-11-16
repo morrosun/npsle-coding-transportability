@@ -27,9 +27,11 @@ import pathlib
 import numpy as np
 import pandas as pd
 
+import db  # connection parameters, see db.py
+
 ROOT = pathlib.Path(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 OUT = ROOT / "out"
-CFG = dict(host="localhost", port=5432, user="postgres", password="1314")
+CFG = db.params()
 
 # ---------------------------------------------------------------- white list
 # Tier C -- non-specific acute confusional state. Each entry is an observed

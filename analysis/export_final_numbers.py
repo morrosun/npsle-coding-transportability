@@ -358,7 +358,7 @@ _first = eic.sort_values("stay_id").groupby("subject_id", as_index=False).first(
 _ap_miss = int(_first["apache"].isna().sum())
 _den = int(F["assoc_eicu_n"])                  # eICU first stays entering the sepsis model
 put("apache_missing_eicu_firststay", "%d of %d (%.1f%%)" % (_ap_miss, _den, 100 * _ap_miss / _den),
-    "cohort_eicu.csv first stay per subject_id; denominator = assoc_eicu_n (t22a_first_sepsis.csv)")
+    "cohort_eicu.csv, one stay per patient; denominator = assoc_eicu_n (t22a_first_sepsis.csv)")
 
 # ---------------------------------------------------------- 17. tier-share tests quoted in 3.2
 _fs = {db: composition(db, True) for db in ("mimiciv", "eicu")}

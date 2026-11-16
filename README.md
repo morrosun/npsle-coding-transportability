@@ -2,9 +2,9 @@
 
 **Reproducible analysis code** for the study:
 
-*Transportability and structural limits of administrative neuropsychiatric
-phenotyping in critically ill patients with systemic lupus erythematosus:
-a three-database evaluation.*
+*Implementation dependence and cross-database evaluation of administrative
+neuropsychiatric phenotyping in critically ill patients with systemic lupus
+erythematosus.*
 
 This repository contains **analysis code only**. No patient-level data are
 included; all cohorts are derived from PhysioNet-credentialed databases
@@ -12,43 +12,46 @@ included; all cohorts are derived from PhysioNet-credentialed databases
 Researchers with PhysioNet credentials can reconstruct the cohorts by running
 the SQL check and extraction scripts against their own local database copies.
 
-> **Version:** `1.1.3` — synchronized with the submitted manuscript
-> (review-12 snapshot, 2026-10-06). `1.1.1` corrected three things in the code
-> itself, found on the eleventh external review: (i) the eICU-CRD
-> one-ICU-stay-per-patient selection rule in `make_first_stays.py` sorted by
-> `hospitaladmitoffset` ascending. Because eICU offsets are measured from each
-> ICU admission, that ordering cannot establish a chronological sequence across
-> hospital admissions, and within one admission it is the *earlier* ICU stay
-> that carries the *larger* offset — so ascending order is biased towards the
-> *later* ICU stay of an admission. The rule now sorts by discharge year,
-> `unitvisitnumber`, `hospitaladmitoffset` descending and `patientunitstayid`,
-> a deterministic choice within the identified lupus stays that makes no
-> first-stay claim; (ii) `extract_tier.py` intersected the legacy arm with the
-> audited core flag instead of the legacy arm's own core universe; and (iii) 
-> `v7_identification_models.py` carried a dead `try/except` around
-> `RepeatedStratifiedGroupKFold`, a class that does not exist in scikit-learn.
-> `1.1.2` fixed two further defects found while checking the *outputs* rather
-> than the text: `fig_en.py` still reproduced the ROC, calibration and
-> decision-curve panels from the retired `part2_model.py` (stay-level
-> `RepeatedStratifiedKFold`), so the ROC legend read AUC 0.578 / 0.689 instead
-> of the patient-grouped 0.514 / 0.686 reported in the manuscript; and the
-> composite figures had not been rebuilt after the `1.1.1` reruns, so Figure 2
-> still carried pre-review estimates. It also removed the last machine-specific
-> paths (`make_strobe.py` output file, the Arial font path in
-> `create_fig_composites.py` / `fig1_v9.py`).
-> This release (`1.1.3`) completes the "one stay per patient" renaming in the
-> archived code: `v9_revision.py` (Supplementary Table S4 cohort rows) and
-> `fig1_v9.py` still emitted the row label "First stay (primary)". **No number
-> and no figure changes** — every estimate in the manuscript was already
-> reproducible from `1.1.2`; this release only makes the archived code emit the
-> same cohort labels as the submitted tables. (The S6/S22 cohort labels are
-> produced by `v9_outcome_table.py`, a manuscript-build script that consumes
-> intermediate CSV files outside this archive and is therefore not included
-> here.)
-> Earlier releases: `1.1.2` and `1.1.1` (2026-10-05) as above; `1.1.0`
-> (2026-10-05) shipped the review-10 pass; `1.0.0` (2026-09-18) an earlier,
-> partially inconsistent analysis pass. Two superseded scripts are retained
-> under `legacy_pre_review10/` for transparency.
+> **Version:** `1.1.5` — packaging-only update, 2026-11-16. **No estimate, table
+> or figure changed**: every number is the one already reproducible from `1.1.4`.
+> This release exists so that the deposit matches the paper as submitted, after a
+> fresh reviewer-style audit of the repository:
+>
+> - the README carries the final title and the version the manuscript cites;
+> - database credentials are no longer stored in the code. Thirteen scripts read
+>   `NPSLE_PG_HOST/PORT/USER/PASSWORD` from the environment through the new
+>   `analysis/db.py`, so a reproducer points the pipeline at their own copy
+>   without editing source files;
+> - the documented run order no longer contains a step that cannot execute.
+>   `v11_algorithm_spec.py` (Table S31) used to read `scripts/_jce_body.html`
+>   from the manuscript build layer, a file that is not part of this deposit; it
+>   now rebuilds S31 from `analysis/fixtures/s27_legacy_table_body.html`, a
+>   fixture that is shipped;
+> - the legacy figure writers (`fig_revision.py`, `part1_epidemiology.py`,
+>   `positive_analyses.py`, `v7_identification_models.py`) now emit **English**
+>   panel labels, so no run of this code can produce a figure that differs from
+>   the published one by language;
+> - `fig_en.py` now **fails** when the SHAP panel cannot be rebuilt instead of
+>   printing a warning and leaving a stale file, and `create_fig_composites.py`
+>   refuses to assemble a composite whose panels are missing. Both close the same
+>   hole: a partially-run pipeline could previously carry a non-English or
+>   superseded panel into Supplementary Figure S2;
+> - `make_first_stays.py` is now `select_one_stay_per_patient.py`, matching the
+>   cohort name used throughout the paper. The intermediate file
+>   `out/_first_stays.json` keeps its original name for provenance.
+>
+> **Release history.** `1.1.4` (2026-10-24) made the pipeline self-contained —
+> eight defects found by the reproduction audit (missing helpers, a backup-CSV
+> dependency, two absolute paths, one hard-coded era label, a silent figure-check
+> exit). `1.1.3` completed the "one stay per patient" renaming in the archived
+> code; `1.1.2` fixed the ROC/calibration panels and the composite rebuild;
+> `1.1.1` corrected the eICU-CRD selection rule (offsets are measured from each
+> ICU admission, so ascending `hospitaladmitoffset` is biased towards the *later*
+> stay), the legacy arm's core universe in `extract_tier.py`, and a dead
+> `try/except` around `RepeatedStratifiedGroupKFold`, a class scikit-learn does
+> not have; `1.1.0` (2026-10-05) shipped the review-10 pass; `1.0.0`
+> (2026-09-18) was an earlier, partially inconsistent pass. Two superseded
+> scripts are kept under `legacy_pre_review10/` for transparency.
 
 ## What the study does
 
@@ -88,7 +91,12 @@ analysis/npsle_io.py                single unified loader: every analysis script
 analysis/extract_cohort.py          builds the aligned three-database cohorts (core + broad
                                     phenotype, seven neuropsychiatric domains, covariates)
 analysis/extract_tier.py            diagnostic-confidence tier assignment
-analysis/make_first_stays.py        prerequisite: writes out/_first_stays.json — ONE ICU stay per
+analysis/db.py                      one place that defines the PostgreSQL connection: reads
+                                    NPSLE_PG_HOST/PORT/USER/PASSWORD from the environment, so no
+                                    credential is stored in the repository
+analysis/select_one_stay_per_patient.py
+                                    (formerly make_first_stays.py) prerequisite: writes
+                                    out/_first_stays.json — ONE ICU stay per
                                     patient (the first ICU stay of the earliest admission; for
                                     eICU-CRD the earliest hospitaldischargeyear, then the smallest
                                     unitvisitnumber, then the largest hospitaladmitoffset). A
@@ -116,6 +124,9 @@ analysis/v6_tier_multinomial.py     tier multinomial → tier coefficient ratio 
 analysis/v8_tables.py / v9_tables.py  table generators for S30/S31/S32 and S22–S25/S29
 analysis/fig_en.py, fig_revision.py, fig1_v9.py, fig_ladder.py,
             create_fig_composites.py, make_strobe.py   figures and participant flow
+analysis/fixtures/s27_legacy_table_body.html
+                                    the Table S27 body, shipped so that v11_algorithm_spec.py
+                                    can rebuild Table S31 without the manuscript build layer
 analysis/export_final_numbers.py     provenance tool: consolidates all result CSVs/JSONs into
                                     out/final_numbers.json (machine-readable, keyed by manuscript
                                     figure/table)
@@ -151,7 +162,7 @@ values.
    `python analysis/extract_cohort.py mimiciv eicu nwicu`
    writes `out/cohort_<db>.csv` with column names aligned across databases.
 2b. **Generate the one-stay-per-patient index (required prerequisite)** —
-   `python analysis/make_first_stays.py`
+   `python analysis/select_one_stay_per_patient.py`
    reads the cohort CSVs and writes `out/_first_stays.json` — one ICU stay per
    subject, which defines the main-analysis cohort (MIMIC-IV 354,
    eICU-CRD 186, NWICU 43; total 583). This file is required before
@@ -193,19 +204,23 @@ values.
    writes `out/v6_qbf.json` (Layers 1–3), consumed by `v9_tables.py`.
 8. **Table assembly** — `python analysis/v8_tables.py` and
    `python analysis/v9_tables.py` build the supplementary tables; `v6_tier_multinomial.py`
-   builds the tier coefficient ratio. `v11_algorithm_spec.py` (Table S31) also
-   reads `scripts/_jce_body.html` from the manuscript build layer; if that file is
-   absent it stops with `FileNotFoundError`, and the analysis half of the package
-   is complete without it.
-9. **Figures** — run the panel producers first, in this order, because several of
-   them write the same file name and the last writer wins:
-   `python analysis/fig_en.py` (English panels, including the ROC / calibration /
-   decision curves, which use the patient-grouped cross-validation of
-   `v7_identification_models.py`), then `python analysis/fig1_v9.py` (Figure 1
-   layout), `python analysis/fig_ladder.py` (attribution ladder) and
-   `python analysis/make_strobe.py` (participant flow); finish with
+   builds the tier coefficient ratio. `v11_algorithm_spec.py` (Table S31)
+   rebuilds the legacy term inventory from
+   `analysis/fixtures/s27_legacy_table_body.html`, which is shipped, so this step
+   runs on a clean clone with no manuscript files present.
+9. **Figures** — `python analysis/fig_en.py` writes every panel that enters the
+   main figures and must run **last among the panel producers**, because
+   `fig_revision.py`, `positive_analyses.py`, `part1_epidemiology.py` and
+   `v7_identification_models.py` write the same file names earlier in the
+   pipeline (their labels are English as of 1.1.5, but they are still superseded).
+   Then `python analysis/fig1_v9.py` (Figure 1 layout),
+   `python analysis/fig_ladder.py` (attribution ladder) and
+   `python analysis/make_strobe.py` (participant flow). Finish with
    `python analysis/create_fig_composites.py`, which assembles the multi-panel
-   figures and must be re-run after **any** panel is regenerated.
+   figures, refuses to run if a panel is missing, and must be re-run after **any**
+   panel is regenerated. `fig_en.py` also rebuilds the SHAP panel and now stops
+   with an error if `shap` is not installed, so that a stale or non-English panel
+   cannot reach Supplementary Figure S2.
    `analysis/fig_revision.py` and the retired `legacy_pre_review10/part2_model.py`
    are kept for provenance only and are not part of this chain.
 10. **Provenance export** — `python analysis/export_final_numbers.py` consolidates
@@ -229,22 +244,104 @@ sensitivity).
   also capture cutaneous or discoid lupus; this is reported faithfully in the
   manuscript and its limitations.
 
+## Database connection
+
+No credential is stored in this repository. Every script that touches a database
+imports `analysis/db.py`, which reads four environment variables:
+
+| variable | default |
+|---|---|
+| `NPSLE_PG_HOST` | `localhost` |
+| `NPSLE_PG_PORT` | `5432` |
+| `NPSLE_PG_USER` | `postgres` |
+| `NPSLE_PG_PASSWORD` | none, must be set |
+
+```bash
+export NPSLE_PG_PASSWORD='***'          # bash
+$env:NPSLE_PG_PASSWORD = "***"          # PowerShell
+python analysis/extract_cohort.py mimiciv eicu nwicu
+```
+
+Scripts that do not read a database (`v8_tables.py`, `v9_tables.py`,
+`v11_algorithm_spec.py`, the figure scripts) run without these variables.
+
+## Script → output map
+
+Every script below writes at least one file that either the manuscript or a later
+step consumes. Files land in `out/` unless stated otherwise; `fig/` holds panels.
+
+| script | writes | consumed by |
+|---|---|---|
+| `extract_cohort.py` | `cohort_<db>.csv` | everything downstream |
+| `select_one_stay_per_patient.py` | `_first_stays.json` | `npsle_io.load()`, all one-stay analyses |
+| `extract_tier.py` | `tier_<db>.csv`, `t11_tier_terms.csv` | `npsle_io`, `v11_algorithm_spec.py` |
+| `_r11_exclusion_audit.py` | `_r11_exclusion_audit.json` | `v11_algorithm_spec.py` (asserts) |
+| `_r9_exclusion_stay_audit.py` | `t45`, `t46` | `export_final_numbers.py` |
+| `_r8_extra_counts.py` | `t43`, `t44` | `export_final_numbers.py` |
+| `describe_cohort.py` | `desc_*.csv` | descriptive reporting only |
+| `part1_epidemiology.py` | `t1`–`t4`, `forest_*.png` | `export_final_numbers.py` (values); the PNGs are superseded by `fig_en.py` |
+| `positive_analyses.py` | `t16`–`t19`, `forest_sepsis.png`, `tierC_reprod.png` | `export_final_numbers.py`; panels superseded by `fig_en.py` |
+| `v4_analyses.py` | `t20`–`t24`, `t22a`–`t22d` | `export_final_numbers.py` |
+| `v5_analyses.py` | `t25a`–`t25d`, `t26`–`t28` | `export_final_numbers.py` |
+| `v6_measurement_model.py` | `v6_qbf.json` | `v9_tables.py` |
+| `v6_tier_multinomial.py` | tier ROR (`S25`) | `v9_tables.py`, `export_final_numbers.py` |
+| `v7_identification_models.py` | `t5`, `t5b`, `t6`–`t11`, model panels | `export_final_numbers.py`; panels superseded by `fig_en.py` |
+| `v7_eicu_algorithm.py` | eICU algorithm evaluation | `extract_tier.py` design, `v11_algorithm_spec.py` |
+| `v7_icd_attribution.py` | ICD-side attribution check | `v11_algorithm_spec.py` (Panel E) |
+| `v7_gcs_check.py`, `v7_ladder.py`, `v7_promote_restricted.py`, `v7_rule_missingness_audit.py` | the four `v7` audit outputs | `export_final_numbers.py`, supplement notes |
+| `v8_addendum.py` | `t40`, `t41`, `t41m`, `t42` | `export_final_numbers.py` |
+| `v8_cv_label_2x2.py` | `v8_cv_label_2x2.json` | `v8_tables.py` |
+| `v8_core_tier_reconcile.py`, `v8_eicu_paths.py`, `v8_eicu_rules.py`, `v8_rule_strings.py`, `v8_truth_*.py` | rule-string and truth-table audits | `v11_algorithm_spec.py`, supplement notes |
+| `v9_revision.py` | `t27_v9`, revision keys | `export_final_numbers.py` |
+| `v10_s12_rerun.py` | `t16_sepsis_assoc.csv` (clustered) | `v8_tables.py` (S12) |
+| `_icd9_sensitivity.py` | `_icd9_sensitivity.json` | `export_final_numbers.py`, S19 note |
+| `_r11_*`, `_r8_*`, `_icd9_*` | as above | as above |
+| `v8_tables.py`, `v9_tables.py`, `v11_algorithm_spec.py` | `S28`–`S33` fragments, `v11_S31.json` | manuscript build |
+| `fig_en.py` … `create_fig_composites.py` | `fig/*.png`, composites | manuscript figures |
+| `export_final_numbers.py` | `final_numbers.json`, `FINAL_NUMBERS.md` | the traceability gates |
+
+`result_or.py` and `revision_analyses.py` are shared model helpers used by the
+`v4`–`v11` chain; `v6_exclusion_check.py` and `v6_verify.py` are the audit steps
+that produced the numbers in the Table S31 note.
+
+## Note on clustered standard errors
+
+The primary association model uses patient-clustered robust standard errors
+(`positive_analyses.py`, `cluster=True`). Two places deliberately differ, and the
+difference is a finite-sample factor, not a different estimand:
+
+- `fig_en.py` draws the Figure 2a panel with `cluster=False`. On the
+  one-stay-per-patient cohort every subject contributes one stay, so the only
+  effect of the cluster correction is the `G/(G-1) * (N-1)/(N-K)` factor. Refitting
+  both ways gives 2.28 (1.25-4.15) vs 2.28 (1.25-4.16) in MIMIC-IV, 1.31
+  (0.63-2.76) vs 1.31 (0.62-2.80) in eICU-CRD, and 1.81 (1.06-3.08) vs 1.82
+  (1.07-3.09) pooled — identical to two decimals, which is the precision printed
+  in Table 2.
+- `_icd9_sensitivity.py` (the ICD-9-CM 995.9x sensitivity analysis) also uses
+  model-based intervals, so that its two arms differ in the sepsis definition and
+  nothing else. It reproduces the manuscript's numbers when run as shipped —
+  primary 2.28 (1.25-4.15) in MIMIC-IV and 1.81 (1.06-3.08) pooled, prefix
+  2.39 (1.32-4.33) and 1.85 (1.04-3.31) — and the primary arm agrees with the
+  patient-clustered Table 2 to two decimals, so the estimator choice does not
+  enter the comparison.
+
 ## Environment
 
-- Python 3.13
+- Python 3.13.14
 - `pandas`, `numpy`, `scipy`, `statsmodels`, `scikit-learn (≥ 1.5)`, `xgboost`,
-  `matplotlib`, `Pillow`, `psycopg2-binary` (see `requirements.txt`)
-- `shap` and `cloudpickle` are required only to regenerate the SHAP panel of the
-  model figure; they are listed as optional in `requirements.txt`.
+  `matplotlib`, `Pillow`, `psycopg2-binary`. `requirements.txt` gives the floor;
+  `requirements-lock.txt` pins the exact versions that produced the submitted
+  numbers.
+- `shap` and `cloudpickle` are needed only to regenerate the SHAP panel of the
+  model figure; without `shap`, `fig_en.py` stops with an error rather than
+  leaving a stale panel for the composite step.
 - A local PostgreSQL instance with the PhysioNet databases loaded
   (tested with PostgreSQL 18, MIMIC-IV v3.1, eICU-CRD v2.0, NWICU)
 
-The analysis scripts connect to the local PhysioNet databases through a
-hard-coded `CONFIG` dict (`host`, `port`, `user`, `password`) near the top of
-each script (the default points at the author's local credentialed instance at
-`localhost:5432`). Point this at your own local copies by editing the `CONFIG`
-dict (and the `dbname` per database) before running. No patient-level data are
-read from or written to the repository.
+Scripts that read a database take the connection from `analysis/db.py`, which
+reads `NPSLE_PG_HOST`, `NPSLE_PG_PORT`, `NPSLE_PG_USER` and `NPSLE_PG_PASSWORD`
+from the environment (see **Database connection** above). No credential and no
+patient-level data are stored in the repository.
 
 ```bash
 python analysis/extract_cohort.py mimiciv eicu nwicu
@@ -275,8 +372,8 @@ MIT — see [LICENSE](LICENSE).
 
 ## Citation
 
-Wang K, Liu Y, Li S, Gao Y, Li J. *Transportability and structural limits of
-administrative neuropsychiatric phenotyping in critically ill patients with
-systemic lupus erythematosus: a three-database evaluation.* (submitted).
+Wang K, Liu Y, Li S, Gao Y, Li J. *Implementation dependence and cross-database
+evaluation of administrative neuropsychiatric phenotyping in critically ill
+patients with systemic lupus erythematosus.* (submitted).
 
 Code: https://github.com/morrosun/npsle-coding-transportability

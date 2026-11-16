@@ -17,6 +17,16 @@ def font(size):
     except Exception:
         return ImageFont.load_default()
 
+def _require(*panels):
+    """Fail loudly if a panel is missing, instead of silently producing a
+    composite from an older file."""
+    missing = [x for x in panels if not os.path.exists(os.path.join(FIG, x))]
+    if missing:
+        raise SystemExit(
+            "missing panel(s) %s in fig/ - re-run the panel producers in the "
+            "order given in README (section 9) before assembling." % ", ".join(missing))
+
+
 def composite(name, imgA, imgB, labelA, labelB, target_h=None, pad_top=130, target_w=None, vstack=False):
     A = Image.open(os.path.join(FIG, imgA)).convert("RGB")
     B = Image.open(os.path.join(FIG, imgB)).convert("RGB")
@@ -77,8 +87,12 @@ def composite(name, imgA, imgB, labelA, labelB, target_h=None, pad_top=130, targ
 
 # 图1: side-by-side; base panels regenerated as portrait (figsize 7x8) so each
 # panel is tall. target_h raised so A/B are clearly taller than in the old wide layout.
+_require("tier_composition.png", "tierC_reprod.png")
 composite("fig1_tier_dual.png", "tier_composition.png", "tierC_reprod.png", "(a)", "(b)", target_h=1700)
+_require("forest_sepsis_first.png", "forest_tier_first.png")
 composite("fig2_sepsis_dual.png", "forest_sepsis_first.png", "forest_tier_first.png", "(a)", "(b)", target_h=1300)
+_require("roc_xgb.png", "calib_xgb.png")
 composite("fig4_roc_calib_dual.png", "roc_xgb.png", "calib_xgb.png", "(a)", "(b)", target_h=1560)
+_require("dca_xgb.png", "shap_mimiciv.png")
 composite("supp_fig2_dca_shap.png", "dca_xgb.png", "shap_mimiciv.png", "(a)", "(b)", target_h=1560)
 print("done")

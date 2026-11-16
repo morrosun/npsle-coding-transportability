@@ -694,7 +694,10 @@ try:
         plt.tight_layout()
         _save(FIG / f"shap_{db}.png", bbox_inches="tight", facecolor="white")
 except Exception as ex:
-    print("[!] SHAP failed:", ex)
+    raise RuntimeError(
+        "the SHAP panel could not be rebuilt (%s). Install `shap` "
+        "(pip install shap) and re-run; a stale or non-English shap_*.png "
+        "must not be carried into the composite figure." % ex)
 
 
 # ================================================================ verification

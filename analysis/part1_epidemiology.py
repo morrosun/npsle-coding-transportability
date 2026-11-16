@@ -282,7 +282,7 @@ for yv, ycn in OUTCOMES:
     ax.set_yticks(ypos)
     ax.set_yticklabels(labels, fontsize=10.5)
     ax.set_xscale("log")
-    ax.set_xlabel("校正 OR（核心 NPSLE vs 非 NPSLE）", fontsize=11)
+    ax.set_xlabel("Adjusted OR (core NPSLE vs no core event)", fontsize=11)
     ax.set_title(f"{ycn} —— 分库校正 OR 与随机效应合并", fontsize=12.5, pad=12)
     for i, (_, r) in enumerate(s.iterrows()):
         ax.text(1.02, 0.97 - i * 0.075, f"{r['or']:.2f} ({r['lo']:.2f}–{r['hi']:.2f})",

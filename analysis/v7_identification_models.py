@@ -60,6 +60,11 @@ FEATS_NOGCS = [f for f in FEATS_MAIN if f != "gcs_min"]
 BINARY = ["female", "sepsis_dx"]
 LOGVAR = ["wbc", "creat"]
 RCSVAR = ["age", "gcs_min"]
+EN = {"wbc": "WBC (log)", "temp": "Temperature", "gcs_min": "GCS minimum",
+      "age": "Age", "map": "Mean arterial pressure", "spo2": "SpO2 minimum",
+      "creat": "Creatinine (log)", "hr": "Heart rate", "sepsis_dx": "Sepsis",
+      "female": "Female sex"}
+
 CN = {"age": "年龄", "female": "女性", "gcs_min": "GCS 最低值", "hr": "心率",
       "map": "平均动脉压", "temp": "体温", "spo2": "SpO₂ 最低",
       "wbc": "白细胞(对数)", "creat": "肌酐(对数)", "sepsis_dx": "脓毒症"}
@@ -409,8 +414,8 @@ def plot_roc(keys, fn, title):
         ax.plot(fpr, tpr, color=col, ls=ls, lw=2,
                 label="%s (AUC=%.3f)" % (lab, roc_auc_score(y, p)))
     ax.plot([0, 1], [0, 1], color="#999", ls=":", lw=1)
-    ax.set_xlabel("1 − 特异度")
-    ax.set_ylabel("敏感度")
+    ax.set_xlabel("1 - specificity")
+    ax.set_ylabel("Sensitivity")
     ax.set_title(title, fontsize=12, pad=10)
     ax.legend(fontsize=8.5, loc="lower right", frameon=False)
     ax.spines[["top", "right"]].set_visible(False)
@@ -429,8 +434,8 @@ def plot_calib(keys, fn, title):
         obs, exp = pd.Series(y).groupby(q).mean(), pd.Series(p).groupby(q).mean()
         ax.plot(exp, obs, marker=mk, color=col, lw=1.8, ms=7, label=lab)
     ax.plot([0, 1], [0, 1], color="#999", ls=":", lw=1)
-    ax.set_xlabel("预测概率")
-    ax.set_ylabel("实际观察比例")
+    ax.set_xlabel("Predicted probability")
+    ax.set_ylabel("Observed proportion")
     ax.set_title(title, fontsize=12, pad=10)
     ax.legend(fontsize=8.5, loc="upper left", frameon=False)
     ax.spines[["top", "right"]].set_visible(False)
@@ -462,11 +467,11 @@ def plot_dca(keys, fn, title):
         ax.plot(pt, net_benefit(y, p, pt), color=col, ls=ls, lw=2, label=lab)
     if prev is not None:
         ax.plot(pt, prev - (1 - prev) * (pt / (1 - pt)), color="#7f8c8d",
-                ls="--", lw=1.3, label="全部干预")
-    ax.axhline(0, color="#34495e", lw=1.3, label="全不干预")
+                ls="--", lw=1.3, label="Treat all")
+    ax.axhline(0, color="#34495e", lw=1.3, label="Treat none")
     ax.set_ylim(-0.12, max(0.05, prev * 1.15) if prev else 0.05)
-    ax.set_xlabel("阈值概率")
-    ax.set_ylabel("净获益")
+    ax.set_xlabel("Threshold probability")
+    ax.set_ylabel("Net benefit")
     ax.set_title(title, fontsize=12, pad=10)
     ax.legend(fontsize=8.5, frameon=False)
     ax.spines[["top", "right"]].set_visible(False)
@@ -480,9 +485,9 @@ for mcn, tag in [("Logistic+RCS", "logit"), ("XGBoost", "xgb")]:
           ((F, mcn, "内部 · eICU-CRD"), "内部 eICU-CRD", C_IN, "--"),
           ((F, mcn, "外部 · MIMIC-IV→eICU-CRD"), "外部 MIMIC→eICU", C_EX, "-"),
           ((F, mcn, "外部 · eICU-CRD→MIMIC-IV"), "外部 eICU→MIMIC", C_EX, "--")]
-    plot_roc(ks, "roc_%s.png" % tag, "%s · 内部与外部 ROC" % mcn)
+    plot_roc(ks, "roc_%s.png" % tag, "%s: internal and external ROC" % mcn)
     plot_calib([(k, l, c, "o" if s == "-" else "s") for k, l, c, s in ks],
-               "calib_%s.png" % tag, "%s · 校准曲线" % mcn)
+               "calib_%s.png" % tag, "%s: calibration" % mcn)
     plot_dca([ks[0], ks[2]], "dca_%s.png" % tag,
              "%s · 决策曲线（MIMIC 内部 vs 外推 eICU）" % mcn)
 
@@ -494,9 +499,9 @@ try:
         m = fit_xgb_model(X, data[db]["npsle_core"].values.astype(int))
         sv = shap.TreeExplainer(m).shap_values(X)
         plt.figure(figsize=(6.4, 4.6), facecolor="white")
-        shap.summary_plot(sv, X, feature_names=[CN.get(f, f) for f in FEATS_MAIN],
+        shap.summary_plot(sv, X, feature_names=[EN.get(f, CN.get(f, f)) for f in FEATS_MAIN],
                           show=False, plot_size=None, max_display=10)
-        plt.title("SHAP · %s 训练的 XGBoost" % LABEL[db], fontsize=11.5)
+        plt.title("SHAP values, XGBoost trained on %s" % LABEL[db], fontsize=11.5)
         plt.tight_layout()
         plt.savefig(FIG + "/shap_%s.png" % db, dpi=300, bbox_inches="tight",
                     facecolor="white")

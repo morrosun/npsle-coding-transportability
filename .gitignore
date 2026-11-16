@@ -11,6 +11,8 @@ manuscript/
 fig/
 *.docx
 *.html
+# the Table S27 fixture must ship: v11_algorithm_spec.py rebuilds S31 from it
+!analysis/fixtures/*.html
 
 # Assistant / session artifacts
 .workbuddy/

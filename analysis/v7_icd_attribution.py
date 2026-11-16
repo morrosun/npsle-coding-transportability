@@ -14,9 +14,11 @@ import pathlib
 import pandas as pd
 import psycopg2
 
+import db  # connection parameters, see db.py
+
 ROOT = pathlib.Path(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 OUT = ROOT / "out"
-CFG = dict(host="localhost", port=5432, user="postgres", password="1314")
+CFG = db.params()
 H, I = "mimiciv_hosp", "mimiciv_icu"
 
 ids = pd.read_csv(OUT / "cohort_mimiciv.csv")["stay_id"].astype("int64").tolist()

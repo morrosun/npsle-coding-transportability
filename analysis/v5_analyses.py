@@ -23,6 +23,8 @@ import sys, os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import npsle_io
 
+import db  # connection parameters, see db.py
+
 warnings.filterwarnings("ignore")
 os.environ["LC_ALL"] = "C"; os.environ["LANG"] = "C"; os.environ["PGCLIENTENCODING"] = "UTF8"
 
@@ -381,7 +383,7 @@ t29 = None
 t29_note = ""
 try:
     import psycopg2
-    CFG = dict(host="localhost", port=5432, user="postgres", password="1314")
+    CFG = db.params()
     ids = tuple(int(x) for x in data["eicu"]["stay_id"].tolist())
     sql = f"""
     SELECT patientunitstayid AS stay_id,

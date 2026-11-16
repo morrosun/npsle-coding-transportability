@@ -19,8 +19,10 @@ import sys, os, re
 import pandas as pd
 import psycopg2
 
+import db  # connection parameters, see db.py
+
 # ----------------------------- CONFIG -----------------------------
-CONFIG = dict(host="localhost", port=5432, user="postgres", password="1314")
+CONFIG = db.params()
 OUT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "out")
 os.makedirs(OUT, exist_ok=True)
 

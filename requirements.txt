@@ -1,5 +1,6 @@
 # NPSLE coding-transportability analysis pipeline
-# Tested with Python 3.13; versions are the ones used for the submitted analysis.
+# Tested with Python 3.13.14; the exact versions used for the submitted
+# analysis are pinned in requirements-lock.txt, the ranges below are the floor.
 pandas>=2.2
 numpy>=1.26
 scipy>=1.13

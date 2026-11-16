@@ -31,7 +31,9 @@ import numpy as np
 import pandas as pd
 import psycopg2
 
-CONFIG = dict(host="localhost", port=5432, user="postgres", password="1314")
+import db  # connection parameters, see db.py
+
+CONFIG = db.params()
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(ROOT, "out")
 os.makedirs(OUT, exist_ok=True)

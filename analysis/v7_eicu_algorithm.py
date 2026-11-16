@@ -40,11 +40,13 @@ import pandas as pd
 import statsmodels.api as sm
 from scipy import stats
 
+import db  # connection parameters, see db.py
+
 warnings.filterwarnings("ignore")
 
 ROOT = pathlib.Path(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 OUT = ROOT / "out"
-CFG = dict(host="localhost", port=5432, user="postgres", password="1314")
+CFG = db.params()
 LABEL = {"mimiciv": "MIMIC-IV", "eicu": "eICU-CRD", "nwicu": "NWICU"}
 ADJ_BASE = ["age", "female", "lupus_nephritis", "creat", "plt"]
 FIRST = json.loads((OUT / "_first_stays.json").read_text(encoding="utf-8"))

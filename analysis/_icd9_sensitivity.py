@@ -19,16 +19,16 @@ from scipy import stats
 
 ROOT = pathlib.Path(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 OUT = ROOT / "out"
-sys.path.insert(0, str(ROOT / "scripts"))
 import npsle_io  # noqa: E402
+
+import db  # connection parameters, see db.py
 
 ADJ_BASE = ["age", "female", "lupus_nephritis", "creat", "plt"]
 L = []
 def A(s=""):
     L.append(str(s))
 
-cn = psycopg2.connect(dbname="mimiciv", host="localhost", port=5432,
-                      user="postgres", password="1314")
+cn = psycopg2.connect(**db.params_for("mimiciv"))
 
 sql = """
 WITH sle AS (

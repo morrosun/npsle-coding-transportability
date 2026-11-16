@@ -1,0 +1,15 @@
+# Exact versions of the environment that produced the submitted numbers.
+# Install with:  pip install -r requirements-lock.txt
+# (Python 3.13.14, Windows; the estimates are not sensitive to the patch level.)
+pandas==2.3.3
+numpy==2.4.6
+scipy==1.18.0
+statsmodels==0.14.6
+scikit-learn==1.9.0
+xgboost==3.3.0
+matplotlib==3.11.0
+Pillow==12.3.0
+psycopg2-binary==2.9.12
+# optional: only needed to regenerate the SHAP panel of the model figure
+shap>=0.45
+cloudpickle>=3.0

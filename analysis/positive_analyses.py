@@ -298,7 +298,7 @@ if mt:
     ax.set_yticks([]); ax.set_ylim(-0.8, len(items) - 0.2)
     for s in ["top", "right", "left"]:
         ax.spines[s].set_visible(False)
-    ax.set_xlabel("校正 OR（脓毒症 → 编码记录的神经精神事件）", fontsize=10.5)
+    ax.set_xlabel("Adjusted OR (sepsis -> recorded neuropsychiatric event)", fontsize=10.5)
     ax.set_title(f"脓毒症与编码记录神经精神事件的关联  "
                  f"(合并 OR {mt['OR']:.2f}, P = {mt['P']:.3f}, I² = {mt['I2']:.0f}%)",
                  fontsize=11.5, fontweight="bold", pad=10)
@@ -323,7 +323,7 @@ for j, (key, nm, col) in enumerate([("_hasc", "含非特异性编码", "#2e6da4"
     for x, p in zip(pos, ps):
         ax.text(x, p + 5, f"{p:.1f}%", ha="center", fontsize=10.5, fontweight="bold")
 ax.set_xticks(xs); ax.set_xticklabels(sub["数据库"], fontsize=11)
-ax.set_ylim(0, 100); ax.set_ylabel("占全部记录神经精神事件的比例 (%)", fontsize=10.5)
+ax.set_ylim(0, 100); ax.set_ylabel("Share of all recorded neuropsychiatric events (%)", fontsize=10.5)
 ax.set_title(f"非特异性神经精神事件构成绝大多数，且跨库可复现\n"
              f"（含非特异性编码：{100*a['_hasc']/a['_n']:.1f}% vs {100*b['_hasc']/b['_n']:.1f}%，P = {p_w:.2f}）",
              fontsize=11, fontweight="bold", pad=10)

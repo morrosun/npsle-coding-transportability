@@ -19,7 +19,6 @@ from scipy import stats
 
 ROOT = pathlib.Path(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 OUT = ROOT / "out"
-sys.path.insert(0, str(ROOT / "scripts"))
 import npsle_io as nio  # noqa: E402
 
 DBS = ["mimiciv", "eicu", "nwicu"]

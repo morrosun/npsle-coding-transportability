@@ -24,6 +24,8 @@ OUT = ROOT / "out"
 sys.path.insert(0, str(SCR))
 import npsle_io  # noqa: E402
 
+import db  # connection parameters, see db.py
+
 # The core-term pattern is restated from v4_analyses.py, which owns the
 # all-stays version of this query, so the two artefacts stay comparable.
 NP = (r"seizure|status epilepticus|encephalopathy|delirium|coma|altered mental|"
@@ -42,8 +44,7 @@ SELECT patientunitstayid AS stay_id,
        min(CASE WHEN diagnosisstring ~* '{NP}' THEN diagnosisoffset END) AS np_off,
        min(CASE WHEN diagnosisstring ~* '{SEP}' THEN diagnosisoffset END) AS sep_off
 FROM eicu_crd.diagnosis WHERE patientunitstayid IN {ids} GROUP BY 1"""
-cn = psycopg2.connect(dbname="eicu", host="localhost", port=5432,
-                      user="postgres", password="1314")
+cn = psycopg2.connect(**db.params_for("eicu"))
 off = pd.read_sql(sql, cn)
 cn.close()
 d = d.merge(off, on="stay_id", how="left")

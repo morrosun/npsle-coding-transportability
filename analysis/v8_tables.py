@@ -17,7 +17,6 @@ import pandas as pd
 
 ROOT = pathlib.Path(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 OUT = ROOT / "out"
-sys.path.insert(0, str(ROOT / "scripts"))
 import npsle_io as io_  # noqa: E402
 
 LABEL = {"mimiciv": "MIMIC-IV", "eicu": "eICU-CRD", "nwicu": "NWICU"}

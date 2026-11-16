@@ -37,9 +37,9 @@ for db in dbs:
     pa.append(100 * only_a.mean()); pb.append(100 * only_b.mean()); pc.append(100 * only_c.mean())
 
 C = ["#1f6f8b", "#4c9f70", "#d9a441"]
-ax.bar(x, pa, 0.55, label="Tier A · 归因明确（术语明写 SLE）", color=C[0])
-ax.bar(x, pb, 0.55, bottom=pa, label="Tier B · 特异性 NP 综合征", color=C[1])
-ax.bar(x, pc, 0.55, bottom=np.array(pa) + np.array(pb), label="Tier C · 非特异性意识/精神改变", color=C[2])
+ax.bar(x, pa, 0.55, label="Tier A: explicit attribution (SLE named in the term)", color=C[0])
+ax.bar(x, pb, 0.55, bottom=pa, label="Tier B: specific neuropsychiatric syndrome", color=C[1])
+ax.bar(x, pc, 0.55, bottom=np.array(pa) + np.array(pb), label="Tier C: non-specific altered consciousness", color=C[2])
 
 for i in range(len(dbs)):
     tot = pa[i] + pb[i] + pc[i]
@@ -55,8 +55,8 @@ for i in range(len(dbs)):
 
 ax.set_xticks(x)
 ax.set_xticklabels([f"{LABEL[d]}\n(n={len(data[d])})" for d in dbs], fontsize=10.5)
-ax.set_ylabel("占 SLE-ICU 队列的百分比 (%)", fontsize=11)
-ax.set_title("图 6　编码记录的神经精神事件按诊断置信度分层的构成", fontsize=12.5, pad=12)
+ax.set_ylabel("Percentage of the SLE-ICU cohort (%)", fontsize=11)
+ax.set_title("Fig. 6　Composition of recorded neuropsychiatric events by diagnostic confidence", fontsize=12.5, pad=12)
 ax.set_ylim(-5.5, max(np.array(pa) + np.array(pb) + np.array(pc)) * 1.25)
 ax.legend(fontsize=9.5, loc="upper left", framealpha=0.95)
 ax.grid(axis="y", ls=":", alpha=0.45)
@@ -94,8 +94,8 @@ ax.axvline(0.5, color="#666", ls="--", lw=1.2)
 ax.text(0.503, len(t15) - 0.35, "随机水平", fontsize=8.8, color="#666")
 ax.set_yticks(yy)
 ax.set_yticklabels([f'{r["数据库"]} · {r["标签定义"]}（事件 {r["事件数"]}）' for _, r in t15.iterrows()], fontsize=9.8)
-ax.set_xlabel("XGBoost 内部 5×5 交叉验证 AUC（95% bootstrap CI）", fontsize=10.5)
-ax.set_title("图 7　提高结局标签置信度并未带来判别力提升", fontsize=12.5, pad=12)
+ax.set_xlabel("XGBoost internal 5x5 cross-validated AUC (95% bootstrap CI)", fontsize=10.5)
+ax.set_title("Fig. 7　Higher-confidence outcome labels did not improve discrimination", fontsize=12.5, pad=12)
 ax.set_xlim(0.33, 0.90)
 ax.grid(axis="x", ls=":", alpha=0.45)
 ax.set_axisbelow(True)

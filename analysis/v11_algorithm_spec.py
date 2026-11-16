@@ -19,7 +19,7 @@ import re
 import sys
 
 ROOT = pathlib.Path(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-SCR = ROOT / "scripts"
+SCR = ROOT / "analysis"
 OUT = ROOT / "out"
 sys.path.insert(0, str(SCR))
 
@@ -27,7 +27,8 @@ import pandas as pd                                        # noqa: E402
 import extract_tier as ET                                  # noqa: E402
 import extract_cohort as EC                                # noqa: E402
 
-BODY = io.open(SCR / "_jce_body.html", encoding="utf-8").read()
+S27 = io.open(SCR / "fixtures" / "s27_legacy_table_body.html",
+              encoding="utf-8").read()
 
 # ------------------------------------------------------------------ helpers
 def esc(s):
@@ -45,8 +46,9 @@ eic = terms[terms.db == "eicu"].sort_values(["tier", "n"], ascending=[True, Fals
 # ------------------------------------------------- 2. legacy eICU term list
 # Taken from the Table S27 block that is already on the page, so that the two
 # tables can never disagree about what the legacy rule set matched.
-m27 = re.search(r"<p><b>Table S27</b>.*?<tbody>(.*?)</tbody>", BODY, re.S)
-assert m27, "Table S27 body not found in _jce_body.html"
+m27 = re.search(r"<tbody>(.*?)</tbody>", S27, re.S)
+assert m27, ("Table S27 body not found in "
+             "analysis/fixtures/s27_legacy_table_body.html")
 legacy = []
 for row in re.findall(r"<tr>(.*?)</tr>", m27.group(1), re.S):
     cells = [re.sub(r"<[^>]+>", "", c).strip() for c in
@@ -125,8 +127,15 @@ H = ['<table class="dataframe data-table">']
 H.append("<thead><tr><th>Element</th><th>Rule as implemented</th></tr></thead><tbody>")
 
 # ---- Panel A: the rule constants, verbatim
-H.append(panel("Panel A. Rule constants, verbatim from the two extraction "
-               "scripts (<code>extract_tier.py</code>, <code>extract_cohort.py</code>)", 2))
+# The submitted Table S31 carries the caveat outside the bold lead-in, so this
+# row is built by hand rather than through panel(); the wording is the one in
+# the submitted supplement and must not drift from it.
+H.append('<tr><td colspan="2" style="background:var(--bg2);text-align:left">'
+         '<b>Panel A. Rule constants as implemented (<code>extract_tier.py</code>, '
+         '<code>extract_cohort.py</code>)</b>. Rows whose pattern opens with a separator '
+         'are the literal regular expressions; rows that are joined by &ldquo;or &hellip; '
+         'at any depth&rdquo; describe a two-route combination and are paraphrased, '
+         'not a single expression</td></tr>')
 for lab, txt in [
     ("MIMIC-IV / NWICU &mdash; Tier B, ICD-10-CM", ET.TB_10),
     ("MIMIC-IV / NWICU &mdash; Tier B, ICD-9-CM", ET.TB_9),
@@ -169,13 +178,16 @@ for lab, txt in [
 H.append(panel("Panel B. eICU-CRD path mechanics: how one "
                "<code>diagnosisstring</code> becomes a matched node", 2))
 for lab, txt in [
-    ("Matching semantics", "node-boundary matching with leaf confirmation and "
-     "explicit exclusions. A Tier B or Tier C pattern opens with a separator, "
-     "so it fires at any node boundary of the path and not only at the leaf; "
-     "the concept lists additionally require confirmation in the leaf (Tier B) "
-     "or in the leaf or on a path of at most three nodes (Tier C). The "
-     "implementation is therefore not a leaf-only rule and is not reported as "
-     "one"),
+    ("Matching semantics", "two alternative routes, plus explicit exclusions. "
+     "<b>(i)</b> A Tier B or Tier C pattern that opens with a separator fires at "
+     "any node boundary of the path, including nodes above the leaf. <b>(ii)</b> "
+     "A bare concept word is admitted only when the concept pattern also matches "
+     "the leaf (Tier B), or matches the leaf or a path of at most three nodes "
+     "(Tier C); this second route is what stops a parent folder from licensing "
+     "an unrelated child. Leaf confirmation therefore constrains route (ii) only "
+     "and is not required for every node-boundary match, which is why the rule is "
+     "not described as leaf-only. The exclusion list is applied to the candidates "
+     "from both routes before any tier is written"),
     ("Path tokenisation", "the string is lower-cased and split on the "
      "character <code>|</code>; the components are the dictionary nodes from "
      "the top-level folder to the leaf"),
